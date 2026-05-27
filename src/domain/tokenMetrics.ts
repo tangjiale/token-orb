@@ -84,10 +84,11 @@ export function parseUserRanking(payload: unknown, users: UserIdentityItem[] = [
         name,
         email,
         displayName: email ? `${name}（${email}）` : name,
-        tokens: readNumber(row, 'tokens') ?? 0
+        tokens: readFirstNumber(row, ['tokens', 'total_tokens', 'today_tokens']) ?? 0
       }
     })
     .sort((a, b) => b.tokens - a.tokens)
+    .slice(0, 10)
     .map((item, index) => ({ ...item, rank: index + 1 }))
 }
 
@@ -147,9 +148,10 @@ export function calculatePoolRemainingPercent(accounts: unknown[], groupId: stri
 
 export function formatTokenCount(value: number | null): string {
   if (value === null || Number.isNaN(value)) return '--'
-  if (value >= 1_000_000) return `${trimFixed(value / 1_000_000)}M`
-  if (value >= 1_000) return `${trimFixed(value / 1_000)}K`
-  return String(Math.round(value))
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`
+  return value.toFixed(2)
 }
 
 export function formatFirstToken(valueMs: number | null): string {
@@ -185,6 +187,14 @@ function readNumber(record: Record<string, unknown> | null, key: string): number
   return null
 }
 
+function readFirstNumber(record: Record<string, unknown> | null, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = readNumber(record, key)
+    if (value !== null) return value
+  }
+  return null
+}
+
 function read5hUsedPercent(extra: Record<string, unknown>, now: Date): number | null {
   const used = readNumber(extra, 'codex_5h_used_percent')
   if (used === null) return null
@@ -212,10 +222,6 @@ function isExpiredUsageWindow(extra: Record<string, unknown>, now: Date): boolea
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function trimFixed(value: number): string {
-  return value.toFixed(1).replace(/\.0$/, '')
 }
 
 function accountIsActive(item: unknown): boolean {

@@ -80,8 +80,8 @@
     </section>
   </main>
 
-  <main v-else-if="isPlatformView" class="platform-shell">
-    <section class="monitor-panel" data-tauri-drag-region>
+  <main v-else-if="isPlatformView" class="platform-shell" :style="platformShellStyle">
+    <section class="monitor-panel" :style="platformShellStyle" data-tauri-drag-region>
       <div class="section-title">
         <ListChecks :size="16" />
         <span>平台信息</span>
@@ -165,7 +165,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ListChecks,
   MonitorDot,
@@ -260,6 +260,15 @@ const poolFillStyle = computed(() => {
     '--fill-level': poolProgressWidth.value,
     '--fill-color': colorMap[poolStatusClass.value]
   }
+})
+const platformShellStyle = computed(() => {
+  const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
+  const height = Math.max(300, 226 + rankingRows * 30)
+  return { height: `${height}px` }
+})
+const platformWindowHeight = computed(() => {
+  const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
+  return Math.max(300, 226 + rankingRows * 30)
 })
 const statusClass = computed(() => {
   if (!hasAdmin.value && !hasPersonal.value) return 'idle'
@@ -533,6 +542,13 @@ onMounted(() => {
   void refreshAll()
   void initFloatingWindow()
 })
+
+watch(platformWindowHeight, async (height) => {
+  if (!isPlatformView) return
+  const api = await loadTauriWindowApi()
+  if (!api) return
+  await api.getCurrentWindow().setSize(new api.LogicalSize(370, height))
+}, { immediate: true })
 
 onBeforeUnmount(() => {
   if (timer !== null) window.clearInterval(timer)

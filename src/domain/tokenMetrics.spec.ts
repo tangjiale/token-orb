@@ -29,8 +29,10 @@ describe('tokenMetrics', () => {
   })
 
   it('formats compact values for orb display', () => {
-    expect(formatTokenCount(55900000)).toBe('55.9M')
-    expect(formatTokenCount(204200)).toBe('204.2K')
+    expect(formatTokenCount(101330000)).toBe('101.33M')
+    expect(formatTokenCount(55900000)).toBe('55.90M')
+    expect(formatTokenCount(204200)).toBe('204.20K')
+    expect(formatTokenCount(980)).toBe('980.00')
     expect(formatFirstToken(14620)).toBe('14.62s')
     expect(formatFirstToken(null)).toBe('--')
   })
@@ -51,6 +53,19 @@ describe('tokenMetrics', () => {
     expect(parseUserRanking({ ranking: [{ user_id: 2, email: 'a@test.com', tokens: 1200 }] }, users)).toEqual([
       { rank: 1, userId: 2, name: '阿唐', email: 'a@test.com', displayName: '阿唐（a@test.com）', tokens: 1200 }
     ])
+  })
+
+  it('limits today usage ranking to top 10 and accepts backend token aliases', () => {
+    const ranking = Array.from({ length: 12 }, (_, index) => ({
+      user_id: index + 1,
+      email: `user${index + 1}@test.com`,
+      total_tokens: (index + 1) * 1000
+    }))
+
+    const parsed = parseUserRanking({ ranking })
+    expect(parsed).toHaveLength(10)
+    expect(parsed[0].tokens).toBe(12000)
+    expect(parsed[9].tokens).toBe(3000)
   })
 
   it('calculates average remaining percent for selected group accounts', () => {

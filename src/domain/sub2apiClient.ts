@@ -47,14 +47,16 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   const baseUrl = normalizeBaseUrl(config.baseUrl)
   const headers = buildAdminApiKeyHeaders(config.apiKey)
   const today = formatLocalDate(new Date())
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
+  const todayQuery = `start_date=${today}&end_date=${today}&timezone=${encodeURIComponent(timezone)}`
   const groupName = config.poolGroupName.trim()
   const groupsPayload = groupName ? await requestJson(`${baseUrl}/api/v1/admin/groups/all`, headers) : null
   const poolGroupId = groupName ? findExactGroupIdByName(parseGroups(groupsPayload), groupName) : null
   const groupQuery = poolGroupId === null ? '' : `&group=${encodeURIComponent(String(poolGroupId))}`
 
   const [statsPayload, rankingPayload, usersPayload, accountsPayload] = await Promise.all([
-    requestJson(`${baseUrl}/api/v1/admin/dashboard/stats`, headers),
-    requestJson(`${baseUrl}/api/v1/admin/dashboard/users-ranking?start_date=${today}&end_date=${today}&limit=8`, headers),
+    requestJson(`${baseUrl}/api/v1/admin/dashboard/stats?timezone=${encodeURIComponent(timezone)}`, headers),
+    requestJson(`${baseUrl}/api/v1/admin/dashboard/users-ranking?${todayQuery}&limit=10`, headers),
     requestJson(`${baseUrl}/api/v1/admin/users?page=1&page_size=200`, headers),
     requestJson(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true&status=active${groupQuery}`, headers)
   ])
