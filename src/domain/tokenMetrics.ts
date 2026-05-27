@@ -7,6 +7,7 @@ export interface TokenOrbMetrics {
 export interface AdminMonitorMetrics {
   todayTotalTokens: number | null
   poolRemainingPercent: number | null
+  poolLatestResetAt: string | null
   userRanking: UserTodayUsageRankItem[]
   updatedAt: string | null
 }
@@ -146,6 +147,22 @@ export function calculatePoolRemainingPercent(accounts: unknown[], groupId: stri
   return percents.reduce((sum, value) => sum + value, 0) / percents.length
 }
 
+export function findLatestPoolResetAt(accounts: unknown[], groupId: string | number | null = null): string | null {
+  const wantedGroupId = groupId === null ? '' : String(groupId).trim()
+  const resetTimes = accounts
+    .filter((item) => accountMatchesGroupId(item, wantedGroupId))
+    .filter((item) => accountIsActive(item))
+    .map((item) => {
+      if (!isRecord(item)) return null
+      const extra = isRecord(item.extra) ? item.extra : item
+      return read5hResetAt(extra)
+    })
+    .filter((value): value is number => value !== null)
+
+  if (resetTimes.length === 0) return null
+  return new Date(Math.max(...resetTimes)).toISOString()
+}
+
 export function formatTokenCount(value: number | null): string {
   if (value === null || Number.isNaN(value)) return '--'
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`
@@ -200,6 +217,22 @@ function read5hUsedPercent(extra: Record<string, unknown>, now: Date): number | 
   if (used === null) return null
   if (isExpiredUsageWindow(extra, now)) return 0
   return Math.min(100, Math.max(0, used))
+}
+
+function read5hResetAt(extra: Record<string, unknown>): number | null {
+  const resetAtRaw = extra.codex_5h_reset_at
+  if (typeof resetAtRaw === 'string' && resetAtRaw.trim() !== '') {
+    const resetAt = Date.parse(resetAtRaw)
+    if (Number.isFinite(resetAt)) return resetAt
+  }
+
+  const resetAfterSeconds = readNumber(extra, 'codex_5h_reset_after_seconds')
+  const updatedAtRaw = extra.codex_usage_updated_at
+  if (resetAfterSeconds === null || typeof updatedAtRaw !== 'string' || updatedAtRaw.trim() === '') return null
+
+  const updatedAt = Date.parse(updatedAtRaw)
+  if (!Number.isFinite(updatedAt)) return null
+  return updatedAt + resetAfterSeconds * 1000
 }
 
 function isExpiredUsageWindow(extra: Record<string, unknown>, now: Date): boolean {

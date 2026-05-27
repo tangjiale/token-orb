@@ -95,7 +95,10 @@
         </article>
         <article class="monitor-card">
           <span>5小时号池剩余量</span>
-          <strong :class="poolStatusClass">{{ formattedPoolRemaining }}</strong>
+          <div class="pool-value-line">
+            <strong :class="poolStatusClass">{{ formattedPoolRemaining }}</strong>
+            <em>{{ formattedPoolLatestReset }}</em>
+          </div>
           <div class="pool-progress" :class="poolStatusClass">
             <i :style="{ width: poolProgressWidth }"></i>
           </div>
@@ -208,6 +211,7 @@ const personalMetrics = ref<TokenOrbMetrics>({ todayTokens: null, firstTokenMs: 
 const adminMetrics = ref<AdminMonitorMetrics>({
   todayTotalTokens: null,
   poolRemainingPercent: null,
+  poolLatestResetAt: null,
   userRanking: [],
   updatedAt: null
 })
@@ -240,6 +244,7 @@ const formattedPoolRemaining = computed(() => {
   const value = adminMetrics.value.poolRemainingPercent
   return value === null ? '--' : `${Math.round(value)}%`
 })
+const formattedPoolLatestReset = computed(() => formatResetRemain(adminMetrics.value.poolLatestResetAt))
 const poolProgressWidth = computed(() => {
   const value = adminMetrics.value.poolRemainingPercent
   if (value === null || Number.isNaN(value)) return '0%'
@@ -556,6 +561,19 @@ function loadFloatingState(): FloatingState {
 
 function saveFloatingState(state: FloatingState) {
   localStorage.setItem(floatingStorageKey, JSON.stringify(state))
+}
+
+function formatResetRemain(value: string | null): string {
+  if (!value) return '--'
+  const resetAt = Date.parse(value)
+  if (!Number.isFinite(resetAt)) return '--'
+  const remainingMs = resetAt - Date.now()
+  if (remainingMs <= 0) return '0m'
+  const totalMinutes = Math.ceil(remainingMs / 60000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  if (hours <= 0) return `${minutes}m`
+  return `${hours}h ${minutes}m`
 }
 
 onMounted(() => {

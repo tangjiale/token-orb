@@ -268,7 +268,8 @@ input {
   padding: 12px;
 }
 
-.monitor-card strong {
+.monitor-card strong,
+.pool-value-line strong {
   display: block;
   margin-top: 6px;
   color: #20e3b2;
@@ -276,20 +277,38 @@ input {
   letter-spacing: 0;
 }
 
-.monitor-card strong.healthy {
+.monitor-card strong.healthy,
+.pool-value-line strong.healthy {
   color: #20e3b2;
 }
 
-.monitor-card strong.warning {
+.monitor-card strong.warning,
+.pool-value-line strong.warning {
   color: #f59e0b;
 }
 
-.monitor-card strong.danger {
+.monitor-card strong.danger,
+.pool-value-line strong.danger {
   color: #fb4d5f;
 }
 
-.monitor-card strong.unknown {
+.monitor-card strong.unknown,
+.pool-value-line strong.unknown {
   color: #94a3b8;
+}
+
+.pool-value-line {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+}
+
+.pool-value-line em {
+  color: #94a3b8;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .pool-progress.healthy i {

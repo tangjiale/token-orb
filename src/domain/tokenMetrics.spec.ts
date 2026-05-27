@@ -3,6 +3,7 @@ import {
   buildSub2apiHeaders,
   calculatePoolRemainingPercent,
   findExactGroupIdByName,
+  findLatestPoolResetAt,
   formatFirstToken,
   formatTokenCount,
   normalizeBaseUrl,
@@ -112,6 +113,36 @@ describe('tokenMetrics', () => {
     ]
 
     expect(calculatePoolRemainingPercent(accounts, 1, new Date('2026-03-16T12:00:00Z'))).toBe(100)
+  })
+
+  it('finds latest 5h reset time from active accounts in selected group', () => {
+    const accounts = [
+      {
+        status: 'active',
+        groups: [{ id: 1, name: 'codex池' }],
+        extra: { codex_5h_reset_at: '2026-03-16T10:00:00Z' }
+      },
+      {
+        status: 'active',
+        groups: [{ id: 1, name: 'codex池' }],
+        extra: {
+          codex_usage_updated_at: '2026-03-16T08:00:00Z',
+          codex_5h_reset_after_seconds: 12600
+        }
+      },
+      {
+        status: 'error',
+        groups: [{ id: 1, name: 'codex池' }],
+        extra: { codex_5h_reset_at: '2026-03-16T20:00:00Z' }
+      },
+      {
+        status: 'active',
+        groups: [{ id: 2, name: '其它池' }],
+        extra: { codex_5h_reset_at: '2026-03-16T22:00:00Z' }
+      }
+    ]
+
+    expect(findLatestPoolResetAt(accounts, 1)).toBe('2026-03-16T11:30:00.000Z')
   })
 
   it('does not fuzzy match group names before resolving group id', () => {

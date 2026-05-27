@@ -3,6 +3,7 @@ import {
   buildSub2apiHeaders,
   calculatePoolRemainingPercent,
   findExactGroupIdByName,
+  findLatestPoolResetAt,
   normalizeBaseUrl,
   parseGroups,
   parseLatestFirstTokenMs,
@@ -61,9 +62,12 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
     requestJson(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true&status=active${groupQuery}`, headers)
   ])
 
+  const accountItems = readItems(accountsPayload)
+
   return {
     todayTotalTokens: parseTodayTokens(statsPayload),
-    poolRemainingPercent: groupName && poolGroupId === null ? null : calculatePoolRemainingPercent(readItems(accountsPayload), poolGroupId),
+    poolRemainingPercent: groupName && poolGroupId === null ? null : calculatePoolRemainingPercent(accountItems, poolGroupId),
+    poolLatestResetAt: groupName && poolGroupId === null ? null : findLatestPoolResetAt(accountItems, poolGroupId),
     userRanking: parseUserRanking(rankingPayload, parseUsers(usersPayload)),
     updatedAt: new Date().toISOString()
   }
