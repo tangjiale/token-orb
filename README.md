@@ -109,6 +109,25 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
+也可以直接使用内置脚本创建并推送 tag：
+
+```bash
+npm run release:tag -- v0.1.1
+```
+
+带发布说明：
+
+```bash
+npm run release:tag -- v0.1.1 "修复号池剩余量展示"
+```
+
+脚本会自动检查：
+
+- 当前分支必须是 `main`。
+- 工作区必须没有未提交改动。
+- 本地和 GitHub 远端不能已存在同名 tag。
+- 会先推送 `main`，再创建 annotated tag 并推送到 GitHub。
+
 Action 会构建：
 
 - macOS 通用安装包：`universal-apple-darwin`

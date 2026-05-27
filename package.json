@@ -9,7 +9,8 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "tauri": "tauri",
-    "desktop": "tauri dev"
+    "desktop": "tauri dev",
+    "release:tag": "bash scripts/release-tag.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "2.5.0",
