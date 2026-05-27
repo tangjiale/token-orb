@@ -134,6 +134,7 @@
       @mousedown="startCollapsedOrbDrag"
     >
       <span>{{ formattedFirstToken }}</span>
+      <em>{{ formattedPoolRemaining }}</em>
     </button>
 
     <section v-else class="orb" @mousedown.self="startWindowDrag">

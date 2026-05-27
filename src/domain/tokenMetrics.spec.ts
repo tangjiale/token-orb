@@ -78,7 +78,7 @@ describe('tokenMetrics', () => {
     expect(calculatePoolRemainingPercent(accounts, '1')).toBe(50)
   })
 
-  it('calculates 5h pool remaining by active accounts in the named group', () => {
+  it('calculates 5h pool remaining by active and rate-limited accounts in the named group', () => {
     const poolGroupId = findExactGroupIdByName(
       parseGroups({
         data: [
@@ -92,12 +92,13 @@ describe('tokenMetrics', () => {
       { status: 'active', groups: [{ id: 1, name: 'codex池' }], extra: { codex_5h_used_percent: 0 } },
       { status: 'active', groups: [{ id: 1, name: 'codex池' }], extra: { codex_5h_used_percent: 3 } },
       { status: 'active', groups: [{ id: 1, name: 'codex池' }], extra: { codex_5h_used_percent: 5 } },
+      { status: 'rate_limited', groups: [{ id: 1, name: 'codex池' }], extra: { codex_5h_used_percent: 100 } },
       { status: 'error', groups: [{ id: 1, name: 'codex池' }], extra: { codex_5h_used_percent: 100 } },
       { status: 'active', groups: [{ id: 2, name: '其它池' }], extra: { codex_5h_used_percent: 100 } }
     ]
 
     expect(poolGroupId).toBe(1)
-    expect(calculatePoolRemainingPercent(accounts, poolGroupId)).toBeCloseTo(97.33, 2)
+    expect(calculatePoolRemainingPercent(accounts, poolGroupId)).toBeCloseTo(73, 2)
   })
 
   it('treats expired 5h usage windows as fully remaining', () => {
@@ -115,7 +116,7 @@ describe('tokenMetrics', () => {
     expect(calculatePoolRemainingPercent(accounts, 1, new Date('2026-03-16T12:00:00Z'))).toBe(100)
   })
 
-  it('finds latest 5h reset time from active accounts in selected group', () => {
+  it('finds nearest future 5h reset time from counted accounts in selected group', () => {
     const accounts = [
       {
         status: 'active',
@@ -123,7 +124,7 @@ describe('tokenMetrics', () => {
         extra: { codex_5h_reset_at: '2026-03-16T10:00:00Z' }
       },
       {
-        status: 'active',
+        status: 'rate_limited',
         groups: [{ id: 1, name: 'codex池' }],
         extra: {
           codex_usage_updated_at: '2026-03-16T08:00:00Z',
@@ -142,7 +143,7 @@ describe('tokenMetrics', () => {
       }
     ]
 
-    expect(findLatestPoolResetAt(accounts, 1)).toBe('2026-03-16T11:30:00.000Z')
+    expect(findLatestPoolResetAt(accounts, 1, new Date('2026-03-16T09:00:00Z'))).toBe('2026-03-16T10:00:00.000Z')
   })
 
   it('does not fuzzy match group names before resolving group id', () => {

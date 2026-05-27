@@ -126,7 +126,7 @@ export function parseGroups(payload: unknown): AdminGroupIdentityItem[] {
 export function findExactGroupIdByName(groups: AdminGroupIdentityItem[], groupName: string): number | null {
   const wantedGroupName = groupName.trim()
   if (!wantedGroupName) return null
-  const matched = groups.find((group) => group.name.trim() === wantedGroupName && accountIsActive(group))
+  const matched = groups.find((group) => group.name.trim() === wantedGroupName && groupIsActive(group))
   return matched?.id ?? null
 }
 
@@ -134,7 +134,7 @@ export function calculatePoolRemainingPercent(accounts: unknown[], groupId: stri
   const wantedGroupId = groupId === null ? '' : String(groupId).trim()
   const percents = accounts
     .filter((item) => accountMatchesGroupId(item, wantedGroupId))
-    .filter((item) => accountIsActive(item))
+    .filter((item) => accountCountsInPool(item))
     .map((item) => {
       if (!isRecord(item)) return null
       const extra = isRecord(item.extra) ? item.extra : item
@@ -147,20 +147,24 @@ export function calculatePoolRemainingPercent(accounts: unknown[], groupId: stri
   return percents.reduce((sum, value) => sum + value, 0) / percents.length
 }
 
-export function findLatestPoolResetAt(accounts: unknown[], groupId: string | number | null = null): string | null {
+export function findLatestPoolResetAt(accounts: unknown[], groupId: string | number | null = null, now = new Date()): string | null {
+  return findNearestPoolResetAt(accounts, groupId, now)
+}
+
+export function findNearestPoolResetAt(accounts: unknown[], groupId: string | number | null = null, now = new Date()): string | null {
   const wantedGroupId = groupId === null ? '' : String(groupId).trim()
   const resetTimes = accounts
     .filter((item) => accountMatchesGroupId(item, wantedGroupId))
-    .filter((item) => accountIsActive(item))
+    .filter((item) => accountCountsInPool(item))
     .map((item) => {
       if (!isRecord(item)) return null
       const extra = isRecord(item.extra) ? item.extra : item
       return read5hResetAt(extra)
     })
-    .filter((value): value is number => value !== null)
+    .filter((value): value is number => value !== null && value > now.getTime())
 
   if (resetTimes.length === 0) return null
-  return new Date(Math.max(...resetTimes)).toISOString()
+  return new Date(Math.min(...resetTimes)).toISOString()
 }
 
 export function formatTokenCount(value: number | null): string {
@@ -257,10 +261,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function accountIsActive(item: unknown): boolean {
+function groupIsActive(item: unknown): boolean {
   if (!isRecord(item)) return false
   const status = String(item.status ?? '').trim().toLowerCase()
   return status === '' || status === 'active'
+}
+
+function accountCountsInPool(item: unknown): boolean {
+  if (!isRecord(item)) return false
+  const status = String(item.status ?? '').trim().toLowerCase()
+  if (status && !['active', 'ratelimit', 'rate_limited', 'rate-limited', 'limited', 'overload', 'overloaded'].includes(status)) {
+    return false
+  }
+  return true
 }
 
 function accountMatchesGroupId(item: unknown, groupId: string): boolean {

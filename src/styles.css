@@ -100,10 +100,26 @@ input {
   position: relative;
   z-index: 2;
   color: #ffffff;
+  transform: translateY(-3px);
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
   letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.collapsed-orb em {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  z-index: 2;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 8px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  transform: translateX(-50%);
   white-space: nowrap;
 }
 
@@ -120,14 +136,14 @@ input {
 }
 
 .collapsed-orb::before {
-  top: calc(100% - var(--fill-level, 0%) - 10px);
+  top: calc(100% - var(--fill-level, 0%) + 8px);
   border-radius: 42% 46% 44% 48%;
   opacity: 0.9;
   animation: wave-spin 4.2s linear infinite;
 }
 
 .collapsed-orb::after {
-  top: calc(100% - var(--fill-level, 0%) - 8px);
+  top: calc(100% - var(--fill-level, 0%) + 10px);
   border-radius: 48% 42% 46% 44%;
   opacity: 0.42;
   animation: wave-spin 6s linear infinite reverse;

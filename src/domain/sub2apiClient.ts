@@ -59,7 +59,7 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
     requestJson(`${baseUrl}/api/v1/admin/dashboard/stats?timezone=${encodeURIComponent(timezone)}`, headers),
     requestJson(`${baseUrl}/api/v1/admin/dashboard/users-ranking?${todayQuery}&limit=10`, headers),
     requestJson(`${baseUrl}/api/v1/admin/users?page=1&page_size=200`, headers),
-    requestJson(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true&status=active${groupQuery}`, headers)
+    requestJson(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true${groupQuery}`, headers)
   ])
 
   const accountItems = readItems(accountsPayload)
