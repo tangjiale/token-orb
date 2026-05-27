@@ -97,7 +97,7 @@
           <span>5小时号池剩余量</span>
           <div class="pool-value-line">
             <strong :class="poolStatusClass">{{ formattedPoolRemaining }}</strong>
-            <em>{{ formattedPoolLatestReset }}</em>
+            <em v-if="formattedPoolLatestReset !== '--'">刷新 {{ formattedPoolLatestReset }}</em>
           </div>
           <div class="pool-progress" :class="poolStatusClass">
             <i :style="{ width: poolProgressWidth }"></i>
