@@ -1,0 +1,22 @@
+<svg width="368" height="264" viewBox="0 0 368 264" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="368" height="264" fill="#020617"/>
+  <rect x="1" y="1" width="366" height="262" rx="48" fill="#08101C" fill-opacity="0.86" stroke="#475569" stroke-opacity="0.72" stroke-width="2"/>
+  <circle cx="30" cy="28" r="9" fill="#20E3B2"/>
+  <text x="48" y="35" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="18" font-weight="800">个人信息</text>
+  <g transform="translate(284 14)">
+    <rect width="56" height="56" rx="28" fill="#334155" fill-opacity="0.5"/>
+    <path d="M19 18H37M19 28H37M19 38H37" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <g font-family="Inter, Arial, sans-serif">
+    <text x="24" y="96" fill="#CBD5E1" font-size="24" font-weight="700">今日 Token</text>
+    <text x="344" y="98" text-anchor="end" fill="#FFFFFF" font-size="38" font-weight="900">204.2K</text>
+    <text x="24" y="154" fill="#CBD5E1" font-size="24" font-weight="700">首 Token</text>
+    <text x="344" y="156" text-anchor="end" fill="#FFFFFF" font-size="38" font-weight="900">1.46s</text>
+    <text x="24" y="218" fill="#CBD5E1" font-size="20" font-weight="600">13:24:20</text>
+  </g>
+  <g transform="translate(286 188)">
+    <rect width="56" height="56" rx="28" fill="#334155" fill-opacity="0.5"/>
+    <path d="M20 18A14 14 0 1 1 16 30" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round"/>
+    <path d="M16 18V30H28" stroke="#E2E8F0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

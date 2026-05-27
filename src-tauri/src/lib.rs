@@ -1,0 +1,194 @@
+use serde::Deserialize;
+use std::collections::HashMap;
+use tauri::image::Image;
+use tauri::menu::{MenuBuilder, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+mod tray_icon_rgba;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct Sub2apiRequest {
+    url: String,
+    headers: HashMap<String, String>,
+}
+
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![sub2api_request])
+        .setup(|app| {
+            let handle = app.handle().clone();
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_always_on_top(true);
+                let _ = window.set_decorations(false);
+                let _ = window.set_shadow(false);
+                let _ = window.set_size(LogicalSize::new(184.0, 132.0));
+                let _ = window.show();
+            }
+
+            let version_item = MenuItem::with_id(app, "version", format!("当前版本 v{}", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
+            let menu = MenuBuilder::new(app)
+                .text("show_monitor", "显示监控面板")
+                .text("open_settings", "设置")
+                .text("check_update", "检查更新")
+                .item(&version_item)
+                .separator()
+                .text("quit", "退出 Token Orb")
+                .build()?;
+
+            TrayIconBuilder::with_id("main")
+                .menu(&menu)
+                .icon(Image::new(
+                    tray_icon_rgba::TRAY_ICON_RGBA,
+                    tray_icon_rgba::TRAY_ICON_WIDTH,
+                    tray_icon_rgba::TRAY_ICON_HEIGHT,
+                ))
+                .show_menu_on_left_click(false)
+                .tooltip("Token Orb")
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "show_monitor" => toggle_monitor(app, None),
+                    "open_settings" => open_settings(app),
+                    "check_update" => open_update_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(move |_tray, event| {
+                    if let TrayIconEvent::Click {
+                        button,
+                        button_state,
+                        rect,
+                        ..
+                    } = event
+                    {
+                        if button == MouseButton::Left && button_state == MouseButtonState::Up {
+                            toggle_monitor(&handle, tray_anchor(&rect));
+                        }
+                    }
+                })
+                .build(app)?;
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running token orb");
+}
+
+#[tauri::command]
+async fn sub2api_request(request: Sub2apiRequest) -> Result<serde_json::Value, String> {
+    let client = reqwest::Client::new();
+    let mut builder = client.get(&request.url);
+
+    for (key, value) in request.headers {
+        builder = builder.header(key, value);
+    }
+
+    let response = builder
+        .send()
+        .await
+        .map_err(|error| format!("sub2api 请求失败: {error}"))?;
+    let status = response.status();
+
+    if !status.is_success() {
+        return Err(format!("sub2api 请求失败: HTTP {status}"));
+    }
+
+    response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| format!("sub2api 响应解析失败: {error}"))
+}
+
+fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, anchor: Option<PhysicalPosition<i32>>) {
+    if let Some(window) = app.get_webview_window("platform") {
+        if window.is_visible().unwrap_or(false) {
+            let _ = window.hide();
+        } else {
+            position_monitor(&window, anchor);
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
+        return;
+    }
+
+    let window = WebviewWindowBuilder::new(app, "platform", WebviewUrl::App("index.html?view=platform".into()))
+        .title("Token Orb 平台信息")
+        .inner_size(370.0, 300.0)
+        .resizable(false)
+        .decorations(false)
+        .transparent(true)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .shadow(false)
+        .build();
+
+    if let Ok(window) = window {
+        position_monitor(&window, anchor);
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn open_settings<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        return;
+    }
+
+    let _ = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?view=settings".into()))
+        .title("Token Orb 设置")
+        .inner_size(390.0, 490.0)
+        .resizable(false)
+        .decorations(true)
+        .always_on_top(true)
+        .build();
+}
+
+fn open_update_window<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("updater") {
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = window.emit("token-orb-check-update", ());
+        return;
+    }
+
+    let window = WebviewWindowBuilder::new(app, "updater", WebviewUrl::App("index.html?view=updater".into()))
+        .title("Token Orb 更新")
+        .inner_size(420.0, 360.0)
+        .resizable(false)
+        .decorations(true)
+        .always_on_top(true)
+        .build();
+
+    if let Ok(window) = window {
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn position_monitor<R: Runtime>(window: &WebviewWindow<R>, anchor: Option<PhysicalPosition<i32>>) {
+    if let Some(anchor) = anchor {
+        let x = anchor.x - 185;
+        let y = anchor.y + 8;
+        let _ = window.set_position(PhysicalPosition::new(x.max(8), y.max(8)));
+        return;
+    }
+
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let size = monitor.size();
+        let position = monitor.position();
+        let x = position.x + size.width as i32 - 410;
+        let y = position.y + 32;
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
+}
+
+fn tray_anchor(rect: &tauri::Rect) -> Option<PhysicalPosition<i32>> {
+    match rect.position {
+        tauri::Position::Physical(position) => Some(PhysicalPosition::new(position.x, position.y)),
+        tauri::Position::Logical(position) => Some(PhysicalPosition::new(position.x as i32, position.y as i32)),
+    }
+}

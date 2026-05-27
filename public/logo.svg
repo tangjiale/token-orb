@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Token Orb">
+  <defs>
+    <linearGradient id="g" x1="52" x2="204" y1="32" y2="224" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#20E3B2"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <linearGradient id="h" x1="78" x2="178" y1="62" y2="194" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC" stop-opacity="0.98"/>
+      <stop offset="1" stop-color="#BDEFFF" stop-opacity="0.84"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="#08111F"/>
+  <path d="M128 28 212 76v104l-84 48-84-48V76l84-48Z" fill="none" stroke="url(#g)" stroke-width="20" stroke-linejoin="round"/>
+  <path d="M81 94 128 67l47 27v31l-47-27-47 27V94Z" fill="url(#h)" opacity="0.96"/>
+  <path d="M81 162v-31l47 27 47-27v31l-47 27-47-27Z" fill="url(#g)"/>
+  <circle cx="128" cy="128" r="17" fill="#20E3B2"/>
+</svg>

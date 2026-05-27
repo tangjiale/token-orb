@@ -1,0 +1,22 @@
+[package]
+name = "token-orb"
+version = "0.1.0"
+description = "Floating sub2api token monitor"
+authors = ["token-orb"]
+edition = "2021"
+
+[lib]
+name = "token_orb_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "=2.2.0", features = [] }
+
+[dependencies]
+tauri = { version = "=2.5.1", features = ["macos-private-api", "tray-icon"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tauri-plugin-updater = "=2.7.1"
+tauri-plugin-dialog = "=2.2.2"
+tauri-plugin-process = "=2.2.0"
