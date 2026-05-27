@@ -127,7 +127,8 @@
       :style="poolFillStyle"
       type="button"
       title="展开个人信息"
-      @click="togglePersonalCollapsed"
+      @click="toggleCollapsedOrb"
+      @mousedown="startCollapsedOrbDrag"
     >
       <span>{{ formattedFirstToken }}</span>
     </button>
@@ -227,6 +228,8 @@ let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
 let timer: number | null = null
 let unlistenMoved: (() => void) | null = null
 let tauriWindowApi: TauriWindowApi | null = null
+let collapsedDragStarted = false
+let collapsedDragStartAt = 0
 
 const hasAdmin = computed(() => hasAdminSettings(settings.value))
 const hasPersonal = computed(() => hasPersonalSettings(settings.value))
@@ -428,6 +431,28 @@ async function startWindowDrag() {
   const api = await loadTauriWindowApi()
   if (!api) return
   await api.getCurrentWindow().startDragging()
+}
+
+async function startCollapsedOrbDrag(event: MouseEvent) {
+  if (event.button !== 0) return
+  collapsedDragStarted = false
+  collapsedDragStartAt = Date.now()
+  const markDragged = () => {
+    collapsedDragStarted = true
+  }
+  window.addEventListener('mousemove', markDragged, { once: true })
+  window.setTimeout(() => {
+    window.removeEventListener('mousemove', markDragged)
+  }, 220)
+  await startWindowDrag()
+}
+
+function toggleCollapsedOrb() {
+  if (collapsedDragStarted || Date.now() - collapsedDragStartAt > 220) {
+    collapsedDragStarted = false
+    return
+  }
+  void togglePersonalCollapsed()
 }
 
 async function togglePersonalCollapsed() {
