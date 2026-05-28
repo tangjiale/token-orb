@@ -1,37 +1,39 @@
-<svg width="740" height="600" viewBox="0 0 740 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="740" height="600" fill="#0B1120"/>
-  <rect x="15" y="15" width="710" height="570" rx="36" fill="#111827" stroke="#334155" stroke-width="2"/>
-  <g opacity="0.45">
-    <path d="M20 72H720" stroke="#334155"/>
-    <path d="M44 302H696" stroke="#475569"/>
-  </g>
-  <text x="42" y="68" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">平台信息</text>
-  <text x="690" y="66" text-anchor="end" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700">13:24:20</text>
+<svg width="740" height="640" viewBox="0 0 740 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="740" height="640" fill="#0B1120"/>
+  <rect x="15" y="15" width="710" height="610" rx="36" fill="#111827" stroke="#334155" stroke-width="2"/>
+  <path d="M32 82H708" stroke="#334155"/>
+  <path d="M44 306H696" stroke="#334155"/>
+  <text x="42" y="66" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">平台信息</text>
+  <text x="690" y="66" text-anchor="end" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="700">16:48:20</text>
   <g transform="translate(44 100)">
     <rect width="328" height="176" rx="24" fill="#0B1120" stroke="#334155" stroke-width="2"/>
     <text x="24" y="54" fill="#CBD5E1" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="800">今日总 Token</text>
-    <text x="24" y="112" fill="#20E3B2" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="900">62.4M</text>
+    <text x="24" y="112" fill="#20E3B2" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="900">124.21M</text>
   </g>
   <g transform="translate(394 100)">
     <rect width="302" height="176" rx="24" fill="#0B1120" stroke="#334155" stroke-width="2"/>
     <text x="24" y="54" fill="#CBD5E1" font-family="Inter, Arial, sans-serif" font-size="26" font-weight="800">5小时号池剩余量</text>
-    <text x="24" y="112" fill="#20E3B2" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="900">91%</text>
+    <text x="24" y="112" fill="#20E3B2" font-family="Inter, Arial, sans-serif" font-size="48" font-weight="900">40%</text>
+    <text x="138" y="108" fill="#94A3B8" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="800">1h 52m 后刷新</text>
     <rect x="24" y="136" width="254" height="15" rx="7.5" fill="#334155"/>
-    <rect x="24" y="136" width="231" height="15" rx="7.5" fill="#20E3B2"/>
+    <rect x="24" y="136" width="102" height="15" rx="7.5" fill="#20E3B2"/>
   </g>
   <text x="82" y="354" fill="#E2E8F0" font-family="Inter, Arial, sans-serif" font-size="30" font-weight="800">今日用户用量榜</text>
   <g font-family="Inter, Arial, sans-serif" font-size="24" font-weight="800">
     <text x="44" y="424" fill="#20E3B2">#1</text>
-    <text x="132" y="424" fill="#CBD5E1">张三（zhangsan@example.com）</text>
-    <text x="696" y="424" text-anchor="end" fill="#20E3B2">60.4M</text>
+    <text x="132" y="424" fill="#CBD5E1">唐家乐（tang.jia.le@finsiot.com）</text>
+    <text x="696" y="424" text-anchor="end" fill="#20E3B2">108.62M</text>
     <path d="M44 443H696" stroke="#334155"/>
     <text x="44" y="484" fill="#20E3B2">#2</text>
-    <text x="132" y="484" fill="#CBD5E1">李四（lisi@example.com）</text>
-    <text x="696" y="484" text-anchor="end" fill="#20E3B2">1.3M</text>
+    <text x="132" y="484" fill="#CBD5E1">由磊（707200583@163.com）</text>
+    <text x="696" y="484" text-anchor="end" fill="#20E3B2">8.60M</text>
     <path d="M44 503H696" stroke="#334155"/>
     <text x="44" y="544" fill="#20E3B2">#3</text>
-    <text x="132" y="544" fill="#CBD5E1">王五（wangwu@example.com）</text>
-    <text x="696" y="544" text-anchor="end" fill="#20E3B2">31.9K</text>
+    <text x="132" y="544" fill="#CBD5E1">黄茂辉（huang.mao.hui@finsiot.com）</text>
+    <text x="696" y="544" text-anchor="end" fill="#20E3B2">6.21M</text>
     <path d="M44 563H696" stroke="#334155"/>
+    <text x="44" y="604" fill="#20E3B2">#4</text>
+    <text x="132" y="604" fill="#CBD5E1">吴敏政（wu.min.zheng@finsiot.com）</text>
+    <text x="696" y="604" text-anchor="end" fill="#20E3B2">782.83K</text>
   </g>
 </svg>
