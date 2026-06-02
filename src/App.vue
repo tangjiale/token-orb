@@ -97,7 +97,17 @@
           <span>5小时号池剩余量</span>
           <div class="pool-value-line">
             <strong :class="poolStatusClass">{{ formattedPoolRemaining }}</strong>
-            <em v-if="formattedPoolLatestReset !== '--'">{{ formattedPoolLatestReset }} 后刷新</em>
+            <span v-if="formattedPoolLatestReset !== '--'" class="pool-reset-hover">
+              <em>{{ formattedPoolLatestReset }} 后刷新</em>
+              <span class="pool-reset-popover">
+                <span class="pool-reset-popover__title">刷新时间列表</span>
+                <span v-if="formattedPoolResetItems.length === 0" class="pool-reset-empty">暂无刷新时间</span>
+                <span v-for="(item, index) in formattedPoolResetItems" :key="`${item.resetAt}-${index}`" class="pool-reset-row">
+                  <span class="pool-reset-status" :class="item.statusClass">{{ item.statusText }}</span>
+                  <time>{{ item.displayTime }}</time>
+                </span>
+              </span>
+            </span>
           </div>
           <div class="pool-progress" :class="poolStatusClass">
             <i :style="{ width: poolProgressWidth }"></i>
@@ -108,7 +118,27 @@
       <div v-if="hasAdmin" class="ranking-box">
         <div class="section-title">
           <Users :size="16" />
-          <span>今日用户用量榜</span>
+          <span>今日用量榜</span>
+          <div class="pool-summary-badges">
+            <span class="pool-summary-badge account-badge" title="账号：正常 / 限流中 / 错误 / 总数量">
+              <Users :size="12" />
+              <span>账号：</span>
+              <strong class="account-counts">
+                <span class="account-count normal" title="正常账号数量">{{ formattedPoolAccounts.active }}</span>
+                <span class="account-separator">/</span>
+                <span class="account-count limited" title="限流中账号数量">{{ formattedPoolAccounts.limited }}</span>
+                <span class="account-separator">/</span>
+                <span class="account-count error" title="错误账号数量">{{ formattedPoolAccounts.error }}</span>
+                <span class="account-separator">/</span>
+                <span class="account-count total" title="当前分组总账号数量">{{ formattedPoolAccounts.total }}</span>
+              </strong>
+            </span>
+            <span class="pool-summary-badge capacity-badge" title="当前容量 / 总容量">
+              <Network :size="12" />
+              <span>容量：</span>
+              <strong>{{ formattedPoolCapacity }}</strong>
+            </span>
+          </div>
         </div>
         <div v-if="adminMetrics.userRanking.length === 0" class="empty-line">暂无数据</div>
         <div v-for="item in adminMetrics.userRanking" :key="item.userId ?? item.displayName" class="ranking-row">
@@ -174,6 +204,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ListChecks,
   MonitorDot,
+  Network,
   PanelRightClose,
   RefreshCw,
   Users
@@ -181,8 +212,11 @@ import {
 import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 import {
   formatFirstToken,
+  formatPoolAccountCount,
+  formatPoolCapacity,
   formatTokenCount,
   type AdminMonitorMetrics,
+  type PoolResetItem,
   type TokenOrbMetrics
 } from '@/domain/tokenMetrics'
 import {
@@ -213,6 +247,9 @@ const adminMetrics = ref<AdminMonitorMetrics>({
   todayTotalTokens: null,
   poolRemainingPercent: null,
   poolLatestResetAt: null,
+  poolResetItems: [],
+  poolAccounts: null,
+  poolCapacity: null,
   userRanking: [],
   updatedAt: null
 })
@@ -241,11 +278,14 @@ const hasPersonal = computed(() => hasPersonalSettings(settings.value))
 const formattedPersonalToday = computed(() => formatTokenCount(personalMetrics.value.todayTokens))
 const formattedFirstToken = computed(() => formatFirstToken(personalMetrics.value.firstTokenMs))
 const formattedAdminToday = computed(() => formatTokenCount(adminMetrics.value.todayTotalTokens))
+const formattedPoolAccounts = computed(() => formatPoolAccountCount(adminMetrics.value.poolAccounts))
+const formattedPoolCapacity = computed(() => formatPoolCapacity(adminMetrics.value.poolCapacity))
 const formattedPoolRemaining = computed(() => {
   const value = adminMetrics.value.poolRemainingPercent
   return value === null ? '--' : `${Math.round(value)}%`
 })
 const formattedPoolLatestReset = computed(() => formatResetRemain(adminMetrics.value.poolLatestResetAt))
+const formattedPoolResetItems = computed(() => adminMetrics.value.poolResetItems.map(formatPoolResetItem))
 const poolProgressWidth = computed(() => {
   const value = adminMetrics.value.poolRemainingPercent
   if (value === null || Number.isNaN(value)) return '0%'
@@ -575,6 +615,24 @@ function formatResetRemain(value: string | null): string {
   const minutes = totalMinutes % 60
   if (hours <= 0) return `${minutes}m`
   return `${hours}h ${minutes}m`
+}
+
+function formatPoolResetItem(item: PoolResetItem) {
+  const date = new Date(item.resetAt)
+  return {
+    resetAt: item.resetAt,
+    statusClass: item.status,
+    statusText: item.status === 'limited' ? '限流中' : '正常',
+    displayTime: Number.isNaN(date.getTime())
+      ? '--'
+      : date.toLocaleString('zh-CN', {
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+      })
+  }
 }
 
 onMounted(() => {

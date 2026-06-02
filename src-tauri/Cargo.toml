@@ -1,6 +1,6 @@
 [package]
 name = "token-orb"
-version = "0.1.0"
+version = "0.2.2"
 description = "Floating sub2api token monitor"
 authors = ["token-orb"]
 edition = "2021"

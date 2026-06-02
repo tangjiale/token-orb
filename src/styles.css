@@ -327,6 +327,77 @@ input {
   white-space: nowrap;
 }
 
+.pool-reset-hover {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.pool-reset-popover {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  z-index: 20;
+  display: flex;
+  width: max-content;
+  min-width: 118px;
+  max-height: 180px;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  padding: 9px;
+  background: rgba(15, 23, 42, 0.96);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.34);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(-4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.pool-reset-hover:hover .pool-reset-popover {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.pool-reset-popover__title {
+  color: #e2e8f0;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.pool-reset-empty,
+.pool-reset-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.pool-reset-status {
+  flex: 0 0 auto;
+}
+
+.pool-reset-status.normal {
+  color: #20e3b2;
+}
+
+.pool-reset-status.limited {
+  color: #fbbf24;
+}
+
+.pool-reset-row time {
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .pool-progress.healthy i {
   background: #20e3b2;
 }
@@ -377,6 +448,85 @@ input {
   color: #94a3b8;
   font-size: 12px;
   font-weight: 600;
+}
+
+.pool-summary-badges {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.pool-summary-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  border-radius: 8px;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.pool-summary-badge span {
+  color: #cbd5e1;
+  font-weight: 800;
+}
+
+.pool-summary-badge strong {
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.account-badge {
+  border: 1px solid rgba(32, 227, 178, 0.14);
+  color: #20e3b2;
+  background: rgba(7, 47, 46, 0.58);
+}
+
+.account-counts {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.account-badge .account-count {
+  font-weight: 900;
+}
+
+.account-badge .account-count.normal {
+  color: #20e3b2;
+}
+
+.account-badge .account-count.limited {
+  color: #fbbf24;
+}
+
+.account-badge .account-count.error {
+  color: #fb7185;
+}
+
+.account-badge .account-count.total {
+  color: #93c5fd;
+}
+
+.account-badge .account-separator {
+  color: rgba(203, 213, 225, 0.62);
+  font-weight: 800;
+}
+
+.capacity-badge {
+  border: 1px solid rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  background: rgba(67, 35, 11, 0.72);
+}
+
+.capacity-badge strong {
+  color: #fbbf24;
 }
 
 .ranking-row {

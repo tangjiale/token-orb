@@ -2,8 +2,11 @@ import {
   buildAdminApiKeyHeaders,
   buildSub2apiHeaders,
   calculatePoolRemainingPercent,
+  countPoolAccounts,
   findExactGroupIdByName,
+  findPoolCapacitySummary,
   findLatestPoolResetAt,
+  listPoolResetItems,
   normalizeBaseUrl,
   parseGroups,
   parseLatestFirstTokenMs,
@@ -47,6 +50,7 @@ export async function fetchSub2apiMetrics(config: Sub2apiConfig): Promise<TokenO
 export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Promise<AdminMonitorMetrics> {
   const baseUrl = normalizeBaseUrl(config.baseUrl)
   const headers = buildAdminApiKeyHeaders(config.apiKey)
+  const realtimeHeaders = buildRealtimeHeaders(headers)
   const today = formatLocalDate(new Date())
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
   const todayQuery = `start_date=${today}&end_date=${today}&timezone=${encodeURIComponent(timezone)}`
@@ -54,12 +58,14 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   const groupsPayload = groupName ? await requestJson(`${baseUrl}/api/v1/admin/groups/all`, headers) : null
   const poolGroupId = groupName ? findExactGroupIdByName(parseGroups(groupsPayload), groupName) : null
   const groupQuery = poolGroupId === null ? '' : `&group=${encodeURIComponent(String(poolGroupId))}`
+  const refreshAt = Date.now()
 
-  const [statsPayload, rankingPayload, usersPayload, accountsPayload] = await Promise.all([
-    requestJson(`${baseUrl}/api/v1/admin/dashboard/stats?timezone=${encodeURIComponent(timezone)}`, headers),
-    requestJson(`${baseUrl}/api/v1/admin/dashboard/users-ranking?${todayQuery}&limit=10`, headers),
+  const [statsPayload, rankingPayload, usersPayload, accountsPayload, capacityPayload] = await Promise.all([
+    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/stats?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders),
+    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/users-ranking?${todayQuery}&limit=10`, refreshAt), realtimeHeaders),
     requestJson(`${baseUrl}/api/v1/admin/users?page=1&page_size=200`, headers),
-    requestJson(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true${groupQuery}`, headers)
+    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true${groupQuery}`, refreshAt), realtimeHeaders),
+    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/groups/capacity-summary?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders)
   ])
 
   const accountItems = readItems(accountsPayload)
@@ -68,6 +74,9 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
     todayTotalTokens: parseTodayTokens(statsPayload),
     poolRemainingPercent: groupName && poolGroupId === null ? null : calculatePoolRemainingPercent(accountItems, poolGroupId),
     poolLatestResetAt: groupName && poolGroupId === null ? null : findLatestPoolResetAt(accountItems, poolGroupId),
+    poolResetItems: groupName && poolGroupId === null ? [] : listPoolResetItems(accountItems, poolGroupId),
+    poolAccounts: groupName && poolGroupId === null ? null : countPoolAccounts(accountItems, poolGroupId),
+    poolCapacity: groupName && poolGroupId === null ? null : findPoolCapacitySummary(capacityPayload, poolGroupId),
     userRanking: parseUserRanking(rankingPayload, parseUsers(usersPayload)),
     updatedAt: new Date().toISOString()
   }
@@ -84,6 +93,19 @@ async function requestJson(url: string, headers: Record<string, string>): Promis
     throw new Error(`sub2api request failed: ${response.status}`)
   }
   return response.json()
+}
+
+export function buildRealtimeUrl(url: string, timestamp = Date.now()): string {
+  const separator = url.includes('?') ? '&' : '?'
+  return `${url}${separator}_ts=${encodeURIComponent(String(timestamp))}`
+}
+
+function buildRealtimeHeaders(headers: Record<string, string>): Record<string, string> {
+  return {
+    ...headers,
+    'Cache-Control': 'no-cache',
+    Pragma: 'no-cache'
+  }
 }
 
 async function loadTauriInvoke(): Promise<TauriInvoke | null> {

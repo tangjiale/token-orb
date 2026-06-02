@@ -8,8 +8,36 @@ export interface AdminMonitorMetrics {
   todayTotalTokens: number | null
   poolRemainingPercent: number | null
   poolLatestResetAt: string | null
+  poolResetItems: PoolResetItem[]
+  poolAccounts: PoolAccountSummary | null
+  poolCapacity: PoolCapacitySummary | null
   userRanking: UserTodayUsageRankItem[]
   updatedAt: string | null
+}
+
+export interface PoolAccountSummary {
+  active: number
+  limited: number
+  error: number
+  total: number
+}
+
+export interface PoolCapacitySummary {
+  groupId: number
+  concurrencyUsed: number
+  concurrencyMax: number
+}
+
+export interface PoolAccountDisplay {
+  active: string
+  limited: string
+  error: string
+  total: string
+}
+
+export interface PoolResetItem {
+  status: 'normal' | 'limited'
+  resetAt: string
 }
 
 export interface UserTodayUsageRankItem {
@@ -123,6 +151,25 @@ export function parseGroups(payload: unknown): AdminGroupIdentityItem[] {
     .filter((item): item is AdminGroupIdentityItem => item !== null)
 }
 
+export function findPoolCapacitySummary(payload: unknown, groupId: string | number | null): PoolCapacitySummary | null {
+  const wantedGroupId = groupId === null ? '' : String(groupId).trim()
+  if (!wantedGroupId) return null
+
+  for (const item of readItems(payload)) {
+    if (!isRecord(item)) continue
+    const capacityGroupId = readNumber(item, 'group_id')
+    if (capacityGroupId === null || String(capacityGroupId) !== wantedGroupId) continue
+
+    return {
+      groupId: capacityGroupId,
+      concurrencyUsed: readNumber(item, 'concurrency_used') ?? 0,
+      concurrencyMax: readNumber(item, 'concurrency_max') ?? 0
+    }
+  }
+
+  return null
+}
+
 export function findExactGroupIdByName(groups: AdminGroupIdentityItem[], groupName: string): number | null {
   const wantedGroupName = groupName.trim()
   if (!wantedGroupName) return null
@@ -147,24 +194,52 @@ export function calculatePoolRemainingPercent(accounts: unknown[], groupId: stri
   return percents.reduce((sum, value) => sum + value, 0) / percents.length
 }
 
+export function countPoolAccounts(accounts: unknown[], groupId: string | number | null = null): PoolAccountSummary {
+  const wantedGroupId = groupId === null ? '' : String(groupId).trim()
+  return accounts
+    .filter((item) => accountMatchesGroupId(item, wantedGroupId))
+    .reduce<PoolAccountSummary>((summary, item) => {
+      if (!isRecord(item)) return summary
+      summary.total += 1
+      if (accountIsErrored(item)) {
+        summary.error += 1
+      } else if (accountIsLimited(item)) {
+        summary.limited += 1
+      } else if (accountIsActive(item)) {
+        summary.active += 1
+      }
+      return summary
+    }, { active: 0, limited: 0, error: 0, total: 0 })
+}
+
 export function findLatestPoolResetAt(accounts: unknown[], groupId: string | number | null = null, now = new Date()): string | null {
   return findNearestPoolResetAt(accounts, groupId, now)
 }
 
 export function findNearestPoolResetAt(accounts: unknown[], groupId: string | number | null = null, now = new Date()): string | null {
+  const resetTimes = listPoolResetItems(accounts, groupId, now).map((item) => Date.parse(item.resetAt))
+
+  if (resetTimes.length === 0) return null
+  return new Date(Math.min(...resetTimes)).toISOString()
+}
+
+export function listPoolResetItems(accounts: unknown[], groupId: string | number | null = null, now = new Date()): PoolResetItem[] {
   const wantedGroupId = groupId === null ? '' : String(groupId).trim()
-  const resetTimes = accounts
+  return accounts
     .filter((item) => accountMatchesGroupId(item, wantedGroupId))
     .filter((item) => accountCountsInPool(item))
     .map((item) => {
       if (!isRecord(item)) return null
       const extra = isRecord(item.extra) ? item.extra : item
-      return read5hResetAt(extra)
+      const resetAt = read5hResetAt(extra)
+      if (resetAt === null || resetAt <= now.getTime()) return null
+      return {
+        status: accountIsLimited(item, now) ? 'limited' : 'normal',
+        resetAt: new Date(resetAt).toISOString()
+      }
     })
-    .filter((value): value is number => value !== null && value > now.getTime())
-
-  if (resetTimes.length === 0) return null
-  return new Date(Math.min(...resetTimes)).toISOString()
+    .filter((item): item is PoolResetItem => item !== null)
+    .sort((a, b) => Date.parse(a.resetAt) - Date.parse(b.resetAt))
 }
 
 export function formatTokenCount(value: number | null): string {
@@ -178,6 +253,21 @@ export function formatTokenCount(value: number | null): string {
 export function formatFirstToken(valueMs: number | null): string {
   if (valueMs === null || Number.isNaN(valueMs)) return '--'
   return `${(valueMs / 1000).toFixed(2)}s`
+}
+
+export function formatPoolCapacity(value: PoolCapacitySummary | null): string {
+  if (!value) return '--'
+  return `${value.concurrencyUsed} / ${value.concurrencyMax}`
+}
+
+export function formatPoolAccountCount(value: PoolAccountSummary | null): PoolAccountDisplay {
+  if (!value) return { active: '--', limited: '--', error: '--', total: '--' }
+  return {
+    active: String(value.active),
+    limited: String(value.limited),
+    error: String(value.error),
+    total: String(value.total)
+  }
 }
 
 function unwrapData(payload: unknown): Record<string, unknown> | null {
@@ -276,6 +366,33 @@ function accountCountsInPool(item: unknown): boolean {
   return true
 }
 
+function accountIsActive(item: unknown, now = new Date()): boolean {
+  if (!isRecord(item)) return false
+  const status = String(item.status ?? '').trim().toLowerCase()
+  if (status !== 'active') return false
+  if (item.schedulable === false) return false
+  if (accountIsErrored(item) || accountIsLimited(item, now)) return false
+  return true
+}
+
+function accountIsLimited(item: unknown, now = new Date()): boolean {
+  if (!isRecord(item)) return false
+  const status = String(item.status ?? '').trim().toLowerCase()
+  if (['ratelimit', 'rate_limited', 'rate-limited', 'limited', 'overload', 'overloaded'].includes(status)) return true
+  if (isFutureTimestamp(item.rate_limit_reset_at, now)) return true
+  if (isFutureTimestamp(item.overload_until, now)) return true
+  if (isFutureTimestamp(item.temp_unschedulable_until, now)) return true
+
+  const extra = isRecord(item.extra) ? item.extra : null
+  return hasActiveModelRateLimit(extra, now)
+}
+
+function accountIsErrored(item: unknown): boolean {
+  if (!isRecord(item)) return false
+  const status = String(item.status ?? '').trim().toLowerCase()
+  return status === 'error' || hasNonEmptyString(item.error_message) || hasNonEmptyString(item.errorMessage)
+}
+
 function accountMatchesGroupId(item: unknown, groupId: string): boolean {
   if (!groupId) return true
   if (!isRecord(item)) return false
@@ -292,5 +409,23 @@ function valueContainsGroupId(value: unknown, groupId: string): boolean {
     if (String(item ?? '') === groupId) return true
     if (!isRecord(item)) return false
     return [item.id, item.group_id, item.groupId].some((candidate) => String(candidate ?? '') === groupId)
+  })
+}
+
+function hasNonEmptyString(value: unknown): boolean {
+  return typeof value === 'string' && value.trim() !== ''
+}
+
+function isFutureTimestamp(value: unknown, now: Date): boolean {
+  if (typeof value !== 'string' || value.trim() === '') return false
+  const timestamp = Date.parse(value)
+  return Number.isFinite(timestamp) && timestamp > now.getTime()
+}
+
+function hasActiveModelRateLimit(extra: Record<string, unknown> | null, now: Date): boolean {
+  if (!extra || !isRecord(extra.model_rate_limits)) return false
+  return Object.values(extra.model_rate_limits).some((value) => {
+    if (!isRecord(value)) return false
+    return isFutureTimestamp(value.rate_limit_reset_at, now)
   })
 }
