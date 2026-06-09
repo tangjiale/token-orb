@@ -23,7 +23,7 @@ export interface PoolAccountSummary {
 }
 
 export interface PoolCapacitySummary {
-  groupId: number
+  groupId: number | null
   concurrencyUsed: number
   concurrencyMax: number
 }
@@ -151,23 +151,33 @@ export function parseGroups(payload: unknown): AdminGroupIdentityItem[] {
     .filter((item): item is AdminGroupIdentityItem => item !== null)
 }
 
-export function findPoolCapacitySummary(payload: unknown, groupId: string | number | null): PoolCapacitySummary | null {
-  const wantedGroupId = groupId === null ? '' : String(groupId).trim()
-  if (!wantedGroupId) return null
+type PoolGroupIdSelector = string | number | readonly (string | number)[] | null
+
+export function findPoolCapacitySummary(payload: unknown, groupId: PoolGroupIdSelector): PoolCapacitySummary | null {
+  const wantedGroupIds = normalizeGroupIds(groupId)
+  if (wantedGroupIds.length === 0) return null
+  const selectedGroupIds = new Set(wantedGroupIds)
+  const summaries: PoolCapacitySummary[] = []
 
   for (const item of readItems(payload)) {
     if (!isRecord(item)) continue
     const capacityGroupId = readNumber(item, 'group_id')
-    if (capacityGroupId === null || String(capacityGroupId) !== wantedGroupId) continue
+    if (capacityGroupId === null || !selectedGroupIds.has(String(capacityGroupId))) continue
 
-    return {
+    summaries.push({
       groupId: capacityGroupId,
       concurrencyUsed: readNumber(item, 'concurrency_used') ?? 0,
       concurrencyMax: readNumber(item, 'concurrency_max') ?? 0
-    }
+    })
   }
 
-  return null
+  if (summaries.length === 0) return null
+  if (summaries.length === 1) return summaries[0]
+  return {
+    groupId: null,
+    concurrencyUsed: summaries.reduce((sum, item) => sum + item.concurrencyUsed, 0),
+    concurrencyMax: summaries.reduce((sum, item) => sum + item.concurrencyMax, 0)
+  }
 }
 
 export function findExactGroupIdByName(groups: AdminGroupIdentityItem[], groupName: string): number | null {
@@ -177,10 +187,17 @@ export function findExactGroupIdByName(groups: AdminGroupIdentityItem[], groupNa
   return matched?.id ?? null
 }
 
-export function calculatePoolRemainingPercent(accounts: unknown[], groupId: string | number | null = null, now = new Date()): number | null {
-  const wantedGroupId = groupId === null ? '' : String(groupId).trim()
+export function findExactGroupIdsByNames(groups: AdminGroupIdentityItem[], groupNames: readonly string[]): number[] {
+  const groupIds = groupNames
+    .map((groupName) => findExactGroupIdByName(groups, groupName))
+    .filter((groupId): groupId is number => groupId !== null)
+  return Array.from(new Set(groupIds))
+}
+
+export function calculatePoolRemainingPercent(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): number | null {
+  const wantedGroupIds = normalizeGroupIds(groupId)
   const percents = accounts
-    .filter((item) => accountMatchesGroupId(item, wantedGroupId))
+    .filter((item) => accountMatchesGroupId(item, wantedGroupIds))
     .filter((item) => accountCountsInPool(item))
     .map((item) => {
       if (!isRecord(item)) return null
@@ -194,10 +211,10 @@ export function calculatePoolRemainingPercent(accounts: unknown[], groupId: stri
   return percents.reduce((sum, value) => sum + value, 0) / percents.length
 }
 
-export function countPoolAccounts(accounts: unknown[], groupId: string | number | null = null): PoolAccountSummary {
-  const wantedGroupId = groupId === null ? '' : String(groupId).trim()
+export function countPoolAccounts(accounts: unknown[], groupId: PoolGroupIdSelector = null): PoolAccountSummary {
+  const wantedGroupIds = normalizeGroupIds(groupId)
   return accounts
-    .filter((item) => accountMatchesGroupId(item, wantedGroupId))
+    .filter((item) => accountMatchesGroupId(item, wantedGroupIds))
     .reduce<PoolAccountSummary>((summary, item) => {
       if (!isRecord(item)) return summary
       summary.total += 1
@@ -212,21 +229,21 @@ export function countPoolAccounts(accounts: unknown[], groupId: string | number 
     }, { active: 0, limited: 0, error: 0, total: 0 })
 }
 
-export function findLatestPoolResetAt(accounts: unknown[], groupId: string | number | null = null, now = new Date()): string | null {
+export function findLatestPoolResetAt(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): string | null {
   return findNearestPoolResetAt(accounts, groupId, now)
 }
 
-export function findNearestPoolResetAt(accounts: unknown[], groupId: string | number | null = null, now = new Date()): string | null {
+export function findNearestPoolResetAt(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): string | null {
   const resetTimes = listPoolResetItems(accounts, groupId, now).map((item) => Date.parse(item.resetAt))
 
   if (resetTimes.length === 0) return null
   return new Date(Math.min(...resetTimes)).toISOString()
 }
 
-export function listPoolResetItems(accounts: unknown[], groupId: string | number | null = null, now = new Date()): PoolResetItem[] {
-  const wantedGroupId = groupId === null ? '' : String(groupId).trim()
+export function listPoolResetItems(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): PoolResetItem[] {
+  const wantedGroupIds = normalizeGroupIds(groupId)
   return accounts
-    .filter((item) => accountMatchesGroupId(item, wantedGroupId))
+    .filter((item) => accountMatchesGroupId(item, wantedGroupIds))
     .filter((item) => accountCountsInPool(item))
     .map((item) => {
       if (!isRecord(item)) return null
@@ -393,22 +410,28 @@ function accountIsErrored(item: unknown): boolean {
   return status === 'error' || hasNonEmptyString(item.error_message) || hasNonEmptyString(item.errorMessage)
 }
 
-function accountMatchesGroupId(item: unknown, groupId: string): boolean {
-  if (!groupId) return true
+function normalizeGroupIds(groupId: PoolGroupIdSelector): string[] {
+  const values = Array.isArray(groupId) ? groupId : [groupId]
+  const ids = values.map((value) => String(value ?? '').trim()).filter((value) => value !== '')
+  return Array.from(new Set(ids))
+}
+
+function accountMatchesGroupId(item: unknown, groupIds: string[]): boolean {
+  if (groupIds.length === 0) return true
   if (!isRecord(item)) return false
   const candidates = [item.group_id, item.groupId, item.group]
-  if (candidates.some((value) => String(value ?? '') === groupId)) return true
+  if (candidates.some((value) => groupIds.includes(String(value ?? '')))) return true
   return [item.group_ids, item.groupIds, item.groups, item.account_groups, item.accountGroups].some((value) =>
-    valueContainsGroupId(value, groupId)
+    valueContainsGroupId(value, groupIds)
   )
 }
 
-function valueContainsGroupId(value: unknown, groupId: string): boolean {
+function valueContainsGroupId(value: unknown, groupIds: string[]): boolean {
   if (!Array.isArray(value)) return false
   return value.some((item) => {
-    if (String(item ?? '') === groupId) return true
+    if (groupIds.includes(String(item ?? ''))) return true
     if (!isRecord(item)) return false
-    return [item.id, item.group_id, item.groupId].some((candidate) => String(candidate ?? '') === groupId)
+    return [item.id, item.group_id, item.groupId].some((candidate) => groupIds.includes(String(candidate ?? '')))
   })
 }
 

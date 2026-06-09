@@ -18,13 +18,19 @@ Token Orb 是一个桌面悬浮监控球，用来查看 sub2api 的 Token 用量
 
 ![设置窗口模拟截图](docs/images/settings-demo.svg)
 
+### 更新窗口
+
+![更新窗口模拟截图](docs/images/updater-demo.svg)
+
 ## 第一版能力
 
 - 悬浮球显示个人数据：今日 Token、最新一条使用记录的首 Token 耗时。
 - 配置管理员 API Key 后，显示系统监控列表：
   - 今日总 Token。
-  - 5小时号池剩余量和最近刷新时间。
-  - 今日用户用量榜：用户名/邮箱和 Token 数。
+  - 5小时号池剩余量、最近刷新时间和 hover 刷新时间列表。
+  - 今日用量榜：用户名/邮箱和 Token 数。
+  - 号池账号数量：正常 / 限流中 / 错误 / 总数量。
+  - 号池容量：当前并发容量 / 总并发容量。
 - 管理员模式下仍可额外配置个人 Token，让悬浮球继续显示自己的个人数据。
 - 未配置管理员 API Key 时，应用退回普通用户模式，只显示个人悬浮球数据。
 - mac 优先交互：菜单栏图标常驻，左键显示/隐藏右上角监控面板，右键菜单打开设置。
@@ -44,8 +50,11 @@ Token Orb 是一个桌面悬浮监控球，用来查看 sub2api 的 Token 用量
 - `/api/v1/admin/dashboard/users-ranking` 读取今日用户用量榜。
 - `/api/v1/admin/groups/all` 读取 active 分组列表，用配置的分组名称完全匹配到分组 ID。
 - `/api/v1/admin/accounts` 按匹配到的分组 ID 读取账号列表，并按 `extra.codex_5h_used_percent` 计算 5 小时号池剩余量。
+- `/api/v1/admin/groups/capacity-summary` 按匹配到的分组 ID 读取 `concurrency_used` 和 `concurrency_max`。
 
-5小时号池剩余量算法：配置分组名称后，先用分组名称完全相等匹配 active 分组 ID，再统计该分组下状态为 `active`、`rate_limited`、`overloaded` 一类可恢复账号，按 `100 - codex_5h_used_percent` 求平均值。错误或停用账号不参与计算。如果 5h 窗口已经过期，则该账号按已用 0%、剩余 100% 计算；界面同时显示这批参与计算账号里最近将要刷新的那个 5h 时间。
+5小时号池剩余量算法：配置分组名称后，先用分组名称完全相等匹配 active 分组 ID，再统计该分组下状态为 `active`、`rate_limited`、`overloaded` 一类可恢复账号，按 `100 - codex_5h_used_percent` 求平均值。错误或停用账号不参与计算。如果 5h 窗口已经过期，则该账号按已用 0%、剩余 100% 计算；界面同时显示这批参与计算账号里最近将要刷新的那个 5h 时间。鼠标移动到“后刷新”文字上，会按刷新时间从小到大展示正常账号和限流中账号的刷新时间列表。
+
+账号数量算法：按当前号池分组统计总账号数量；分子拆分为正常、限流中、错误三类。暂停账号只计入总数量，不计入正常、限流中或错误。
 
 ## 配置说明
 
@@ -102,31 +111,39 @@ npm test
 
 项目内置 GitHub Actions：`.github/workflows/release.yml`。
 
-只有推送 `v*` 标签时才会自动打包和发布 Release，例如：
+发版时只需要手动修改一个地方：`package.json`。
+
+需要更新：
+
+- `version`：应用版本号，不带 `v` 前缀，例如 `0.2.3`。
+- `release.notes`：GitHub Release 中用户看到的更新记录。
+
+修改后先同步 Tauri / Rust / npm 版本文件：
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+npm run release:sync
 ```
 
-也可以直接使用内置脚本创建并推送 tag：
+提交所有同步结果后，执行发布：
 
 ```bash
-npm run release:tag -- v0.1.1
+npm run release:tag
 ```
 
-带发布说明：
-
-```bash
-npm run release:tag -- v0.1.1 "修复号池剩余量展示"
-```
+`release:tag` 会自动从 `package.json.version` 创建 `v*` tag，并使用
+`package.json.release.notes` 作为 GitHub Release 更新记录。
 
 脚本会自动检查：
 
 - 当前分支必须是 `main`。
 - 工作区必须没有未提交改动。
+- 本地 tag 必须等于 `v` + `package.json.version`。
 - 本地和 GitHub 远端不能已存在同名 tag。
 - 会先推送 `main`，再创建 annotated tag 并推送到 GitHub。
+
+GitHub Actions 也会再次校验 tag 与 `package.json.version` 是否一致，并确认
+`package-lock.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、
+`src-tauri/Cargo.lock` 已经同步提交，避免发布包内版本和 Release tag 不一致。
 
 Action 会构建：
 

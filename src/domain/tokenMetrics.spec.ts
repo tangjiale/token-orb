@@ -4,6 +4,7 @@ import {
   calculatePoolRemainingPercent,
   countPoolAccounts,
   findExactGroupIdByName,
+  findExactGroupIdsByNames,
   findLatestPoolResetAt,
   findPoolCapacitySummary,
   formatFirstToken,
@@ -48,6 +49,19 @@ describe('tokenMetrics', () => {
     expect(findPoolCapacitySummary(payload, 9)).toBeNull()
   })
 
+  it('aggregates concurrency capacity summary by multiple group ids', () => {
+    const payload = {
+      data: [
+        { group_id: 2, concurrency_used: 3, concurrency_max: 40 },
+        { group_id: 5, concurrency_used: '1', concurrency_max: '10' },
+        { group_id: 8, concurrency_used: 2, concurrency_max: 20 }
+      ]
+    }
+
+    expect(findPoolCapacitySummary(payload, [2, '5'])).toEqual({ groupId: null, concurrencyUsed: 4, concurrencyMax: 50 })
+    expect(findPoolCapacitySummary(payload, [9])).toBeNull()
+  })
+
   it('counts active and total accounts for selected group', () => {
     const accounts = [
       { group_id: 2, status: 'active' },
@@ -58,6 +72,18 @@ describe('tokenMetrics', () => {
     ]
 
     expect(countPoolAccounts(accounts, 2)).toEqual({ active: 2, limited: 1, error: 0, total: 4 })
+  })
+
+  it('counts active and total accounts across selected groups', () => {
+    const accounts = [
+      { group_id: 2, status: 'active' },
+      { group_id: 5, status: 'rate_limited' },
+      { groups: [{ id: 2, name: 'codex池' }], status: 'active' },
+      { group_id: 8, status: 'active' },
+      { group_ids: [5], status: 'error' }
+    ]
+
+    expect(countPoolAccounts(accounts, [2, 5])).toEqual({ active: 2, limited: 1, error: 1, total: 4 })
   })
 
   it('excludes limited and errored accounts from selected group active count', () => {
@@ -150,6 +176,16 @@ describe('tokenMetrics', () => {
       { group_id: 2, extra: { codex_5h_used_percent: 90 } }
     ]
     expect(calculatePoolRemainingPercent(accounts, '1')).toBe(50)
+  })
+
+  it('calculates average remaining percent for selected group accounts across multiple groups', () => {
+    const accounts = [
+      { group_ids: [1], status: 'active', extra: { codex_5h_used_percent: 60 } },
+      { groups: [{ id: 2, name: 'codex池' }], status: 'active', extra: { codex_5h_used_percent: 40 } },
+      { group_id: 3, status: 'active', extra: { codex_5h_used_percent: 90 } }
+    ]
+
+    expect(calculatePoolRemainingPercent(accounts, [1, 2])).toBe(50)
   })
 
   it('calculates 5h pool remaining by active and rate-limited accounts in the named group', () => {
@@ -258,5 +294,18 @@ describe('tokenMetrics', () => {
     expect(findExactGroupIdByName(groups, 'codex池')).toBe(1)
     expect(findExactGroupIdByName(groups, 'codex')).toBeNull()
     expect(findExactGroupIdByName(groups, 'codex池备')).toBeNull()
+  })
+
+  it('resolves multiple exact active group names and removes duplicates', () => {
+    const groups = parseGroups({
+      data: [
+        { id: 1, name: 'codex池', status: 'active' },
+        { id: 2, name: 'codex池备用', status: 'active' },
+        { id: 3, name: 'codex', status: 'inactive' }
+      ]
+    })
+
+    expect(findExactGroupIdsByNames(groups, ['codex池', 'codex池备用', 'codex池'])).toEqual([1, 2])
+    expect(findExactGroupIdsByNames(groups, ['codex'])).toEqual([])
   })
 })

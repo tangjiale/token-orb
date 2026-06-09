@@ -3,7 +3,7 @@ import {
   buildSub2apiHeaders,
   calculatePoolRemainingPercent,
   countPoolAccounts,
-  findExactGroupIdByName,
+  findExactGroupIdsByNames,
   findPoolCapacitySummary,
   findLatestPoolResetAt,
   listPoolResetItems,
@@ -28,7 +28,8 @@ export interface Sub2apiConfig {
 export interface AdminMonitorConfig {
   baseUrl: string
   apiKey: string
-  poolGroupName: string
+  poolGroupName?: string
+  poolGroupNames?: string[]
 }
 
 export async function fetchSub2apiMetrics(config: Sub2apiConfig): Promise<TokenOrbMetrics> {
@@ -54,32 +55,73 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   const today = formatLocalDate(new Date())
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
   const todayQuery = `start_date=${today}&end_date=${today}&timezone=${encodeURIComponent(timezone)}`
-  const groupName = config.poolGroupName.trim()
-  const groupsPayload = groupName ? await requestJson(`${baseUrl}/api/v1/admin/groups/all`, headers) : null
-  const poolGroupId = groupName ? findExactGroupIdByName(parseGroups(groupsPayload), groupName) : null
-  const groupQuery = poolGroupId === null ? '' : `&group=${encodeURIComponent(String(poolGroupId))}`
+  const groupNames = normalizePoolGroupNames(config.poolGroupNames ?? config.poolGroupName)
+  const groupsPayload = groupNames.length > 0 ? await requestJson(`${baseUrl}/api/v1/admin/groups/all`, headers) : null
+  const poolGroupIds = groupNames.length > 0 ? findExactGroupIdsByNames(parseGroups(groupsPayload), groupNames) : []
+  const groupMatched = groupNames.length === 0 || poolGroupIds.length > 0
   const refreshAt = Date.now()
+  const accountsRequests =
+    poolGroupIds.length > 0
+      ? poolGroupIds.map((groupId) =>
+          requestJson(
+            buildRealtimeUrl(
+              `${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true&group=${encodeURIComponent(String(groupId))}`,
+              refreshAt
+            ),
+            realtimeHeaders
+          )
+        )
+      : [requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true`, refreshAt), realtimeHeaders)]
 
-  const [statsPayload, rankingPayload, usersPayload, accountsPayload, capacityPayload] = await Promise.all([
+  const [statsPayload, rankingPayload, usersPayload, accountsPayloads, capacityPayload] = await Promise.all([
     requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/stats?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders),
     requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/users-ranking?${todayQuery}&limit=10`, refreshAt), realtimeHeaders),
     requestJson(`${baseUrl}/api/v1/admin/users?page=1&page_size=200`, headers),
-    requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true${groupQuery}`, refreshAt), realtimeHeaders),
+    Promise.all(accountsRequests),
     requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/groups/capacity-summary?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders)
   ])
 
-  const accountItems = readItems(accountsPayload)
+  const accountItems = groupMatched ? dedupeAccounts(accountsPayloads.flatMap((payload) => readItems(payload))) : []
+  const selectedGroupIds = poolGroupIds.length > 0 ? poolGroupIds : null
 
   return {
     todayTotalTokens: parseTodayTokens(statsPayload),
-    poolRemainingPercent: groupName && poolGroupId === null ? null : calculatePoolRemainingPercent(accountItems, poolGroupId),
-    poolLatestResetAt: groupName && poolGroupId === null ? null : findLatestPoolResetAt(accountItems, poolGroupId),
-    poolResetItems: groupName && poolGroupId === null ? [] : listPoolResetItems(accountItems, poolGroupId),
-    poolAccounts: groupName && poolGroupId === null ? null : countPoolAccounts(accountItems, poolGroupId),
-    poolCapacity: groupName && poolGroupId === null ? null : findPoolCapacitySummary(capacityPayload, poolGroupId),
+    poolRemainingPercent: groupMatched ? calculatePoolRemainingPercent(accountItems, selectedGroupIds) : null,
+    poolLatestResetAt: groupMatched ? findLatestPoolResetAt(accountItems, selectedGroupIds) : null,
+    poolResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds) : [],
+    poolAccounts: groupMatched ? countPoolAccounts(accountItems, selectedGroupIds) : null,
+    poolCapacity: groupMatched ? findPoolCapacitySummary(capacityPayload, selectedGroupIds) : null,
     userRanking: parseUserRanking(rankingPayload, parseUsers(usersPayload)),
     updatedAt: new Date().toISOString()
   }
+}
+
+function normalizePoolGroupNames(value: string | string[] | undefined): string[] {
+  const values = Array.isArray(value) ? value : [value]
+  const names = values.map((item) => String(item ?? '').trim()).filter((item) => item !== '')
+  return Array.from(new Set(names))
+}
+
+function dedupeAccounts(accounts: unknown[]): unknown[] {
+  const seen = new Set<string>()
+  const deduped: unknown[] = []
+
+  accounts.forEach((account, index) => {
+    const key = getAccountDedupeKey(account, index)
+    if (seen.has(key)) return
+    seen.add(key)
+    deduped.push(account)
+  })
+
+  return deduped
+}
+
+function getAccountDedupeKey(account: unknown, index: number): string {
+  if (typeof account !== 'object' || account === null || Array.isArray(account)) return `index:${index}`
+  const record = account as Record<string, unknown>
+  const id = record.id ?? record.account_id ?? record.accountId ?? record.token_id ?? record.tokenId
+  if (id !== undefined && id !== null && String(id).trim() !== '') return `id:${String(id)}`
+  return `index:${index}`
 }
 
 async function requestJson(url: string, headers: Record<string, string>): Promise<unknown> {

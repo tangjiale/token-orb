@@ -36,9 +36,29 @@ input {
 
 .settings-shell {
   width: 100%;
+  height: 100%;
   min-height: 100%;
-  padding: 18px;
+  overflow-y: auto;
+  padding: 18px 18px 24px;
   background: #0f172a;
+}
+
+.settings-shell::-webkit-scrollbar {
+  width: 8px;
+}
+
+.settings-shell::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.settings-shell::-webkit-scrollbar-thumb {
+  border: 2px solid rgba(15, 23, 42, 0.72);
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.46);
+}
+
+.settings-shell::-webkit-scrollbar-thumb:hover {
+  background: rgba(203, 213, 225, 0.62);
 }
 
 .update-shell {
@@ -370,10 +390,10 @@ input {
 
 .pool-reset-empty,
 .pool-reset-row {
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: 50px 1fr;
   align-items: center;
-  justify-content: flex-start;
-  gap: 8px;
+  gap: 6px;
   color: #cbd5e1;
   font-size: 11px;
   font-weight: 800;
@@ -395,6 +415,7 @@ input {
   color: #cbd5e1;
   font-size: 11px;
   font-weight: 800;
+  text-align: right;
   white-space: nowrap;
 }
 
@@ -579,6 +600,72 @@ input {
   box-shadow: 0 0 0 3px rgba(32, 227, 178, 0.12);
 }
 
+.tag-input {
+  display: flex;
+  min-height: 38px;
+  max-height: 104px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  overflow-y: auto;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 5px 7px;
+  cursor: text;
+}
+
+.tag-input:focus-within {
+  border-color: #20e3b2;
+  box-shadow: 0 0 0 3px rgba(32, 227, 178, 0.12);
+}
+
+.tag-chip {
+  display: inline-flex;
+  max-width: 100%;
+  height: 26px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(32, 227, 178, 0.18);
+  border-radius: 8px;
+  color: #ccfbf1;
+  background: rgba(7, 47, 46, 0.72);
+  padding: 0 7px;
+  cursor: pointer;
+}
+
+.tag-chip span {
+  max-width: 160px;
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-input input {
+  flex: 1 1 180px;
+  min-width: 120px;
+  height: 26px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 2px;
+  box-shadow: none;
+}
+
+.tag-input input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.save-message {
+  color: #ccfbf1;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .compact-field {
   grid-template-columns: 1fr 82px 24px;
   gap: 10px;
@@ -603,8 +690,15 @@ input {
 }
 
 .update-summary strong {
-  color: #20e3b2;
   font-size: 20px;
+}
+
+.update-summary strong.current-version {
+  color: #93c5fd;
+}
+
+.update-summary strong.latest-version {
+  color: #20e3b2;
 }
 
 .update-status {
@@ -674,6 +768,7 @@ input {
 
 .update-actions {
   gap: 10px;
+  margin-top: 12px;
 }
 
 .primary-button,

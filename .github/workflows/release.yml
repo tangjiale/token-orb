@@ -42,6 +42,20 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Sync release metadata
+        id: release
+        run: node scripts/sync-release-metadata.mjs --github-output
+
+      - name: Verify release tag
+        run: |
+          if [ "${GITHUB_REF_NAME}" != "${{ steps.release.outputs.tag }}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${{ steps.release.outputs.version }}"
+            exit 1
+          fi
+
+      - name: Verify release metadata is committed
+        run: git diff --exit-code -- package-lock.json src-tauri/tauri.conf.json src-tauri/Cargo.toml src-tauri/Cargo.lock
+
       - name: Build and publish Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -49,9 +63,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Token Orb ${{ github.ref_name }}"
-          releaseBody: "自动构建的 Token Orb 安装包。"
+          tagName: ${{ steps.release.outputs.tag }}
+          releaseName: ${{ steps.release.outputs.release_name }}
+          releaseBody: ${{ steps.release.outputs.release_body }}
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}

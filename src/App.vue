@@ -21,9 +21,28 @@
         <input v-model="draft.personalToken" type="password" placeholder="用于悬浮球个人数据" />
       </label>
 
-      <label class="field">
+      <label class="field pool-group-field">
         <span>号池分组名称（可选）</span>
-        <input v-model="draft.poolGroupName" placeholder="留空统计全部正常账号" />
+        <div class="tag-input" @click="focusPoolGroupInput">
+          <button
+            v-for="name in draft.poolGroupNames"
+            :key="name"
+            class="tag-chip"
+            type="button"
+            :title="`移除 ${name}`"
+            @click.stop="removePoolGroupName(name)"
+          >
+            <span>{{ name }}</span>
+            <X :size="13" />
+          </button>
+          <input
+            ref="poolGroupInputRef"
+            v-model="poolGroupNameInput"
+            placeholder="输入后按回车添加，留空统计全部正常账号"
+            @keydown.enter.prevent="addPoolGroupName"
+            @keydown.backspace="removeLastPoolGroupNameWhenEmpty"
+          />
+        </div>
       </label>
 
       <label class="field compact-field">
@@ -36,6 +55,7 @@
 
       <div class="settings-panel__actions">
         <button class="primary-button" type="button" @click="saveDraft">保存配置</button>
+        <span v-if="saveMessage" class="save-message">{{ saveMessage }}</span>
       </div>
     </section>
   </main>
@@ -49,12 +69,12 @@
 
       <div class="update-summary">
         <span>当前版本</span>
-        <strong>v{{ appVersion }}</strong>
+        <strong class="current-version">v{{ appVersion }}</strong>
       </div>
 
       <div v-if="updateVersion" class="update-summary">
         <span>最新版本</span>
-        <strong>v{{ updateVersion }}</strong>
+        <strong class="latest-version">v{{ updateVersion }}</strong>
       </div>
 
       <div class="update-status" :class="updateState">{{ updateMessage }}</div>
@@ -207,7 +227,8 @@ import {
   Network,
   PanelRightClose,
   RefreshCw,
-  Users
+  Users,
+  X
 } from 'lucide-vue-next'
 import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 import {
@@ -224,6 +245,7 @@ import {
   hasPersonalSettings,
   loadSettings,
   saveSettings,
+  settingsStorageKey,
   type AppSettings
 } from '@/domain/settings'
 
@@ -241,7 +263,9 @@ const floatingStorageKey = 'token-orb-floating-v1'
 const expandedSize = { width: 184, height: 132 }
 const collapsedSize = { width: 44, height: 44 }
 const settings = ref<AppSettings>(loadSettings())
-const draft = reactive<AppSettings>({ ...settings.value })
+const draft = reactive<AppSettings>(createSettingsDraft(settings.value))
+const poolGroupNameInput = ref('')
+const poolGroupInputRef = ref<HTMLInputElement | null>(null)
 const personalMetrics = ref<TokenOrbMetrics>({ todayTokens: null, firstTokenMs: null, updatedAt: null })
 const adminMetrics = ref<AdminMonitorMetrics>({
   todayTotalTokens: null,
@@ -259,6 +283,7 @@ const isPlatformView = view === 'platform'
 const isUpdaterView = view === 'updater'
 const loading = ref(false)
 const errorMessage = ref('')
+const saveMessage = ref('')
 const personalCollapsed = ref(false)
 const appVersion = ref('0.1.0')
 const updateVersion = ref('')
@@ -268,6 +293,7 @@ const updateMessage = ref('点击重新检查获取最新版本。')
 const downloadPercent = ref<number | null>(null)
 let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
 let timer: number | null = null
+let saveMessageTimer: number | null = null
 let unlistenMoved: (() => void) | null = null
 let tauriWindowApi: TauriWindowApi | null = null
 let collapsedDragStarted = false
@@ -363,7 +389,7 @@ async function refreshAdmin() {
   adminMetrics.value = await fetchAdminMonitorMetrics({
     baseUrl: settings.value.sub2apiBaseUrl,
     apiKey: settings.value.adminApiKey,
-    poolGroupName: settings.value.poolGroupName
+    poolGroupNames: settings.value.poolGroupNames
   })
 }
 
@@ -462,9 +488,66 @@ async function restartApp() {
 }
 
 function saveDraft() {
+  addPoolGroupName()
   settings.value = saveSettings({ ...draft })
+  syncSettingsDraft(settings.value)
+  showSaveMessage()
   scheduleRefresh()
   void refreshAll()
+}
+
+function showSaveMessage() {
+  saveMessage.value = '配置已保存'
+  if (saveMessageTimer !== null) window.clearTimeout(saveMessageTimer)
+  saveMessageTimer = window.setTimeout(() => {
+    saveMessage.value = ''
+    saveMessageTimer = null
+  }, 2400)
+}
+
+function syncExternalSettingsChange(event: StorageEvent) {
+  if (isUpdaterView) return
+  if (event.key !== settingsStorageKey || event.newValue === null) return
+  settings.value = loadSettings()
+  syncSettingsDraft(settings.value)
+  scheduleRefresh()
+  void refreshAll()
+}
+
+function createSettingsDraft(source: AppSettings): AppSettings {
+  return {
+    ...source,
+    poolGroupNames: [...source.poolGroupNames]
+  }
+}
+
+function syncSettingsDraft(source: AppSettings) {
+  Object.assign(draft, createSettingsDraft(source))
+}
+
+function addPoolGroupName() {
+  const name = poolGroupNameInput.value.trim()
+  if (!name) return
+  if (!draft.poolGroupNames.includes(name)) {
+    draft.poolGroupNames.push(name)
+  }
+  draft.poolGroupName = draft.poolGroupNames[0] ?? ''
+  poolGroupNameInput.value = ''
+}
+
+function removePoolGroupName(name: string) {
+  draft.poolGroupNames = draft.poolGroupNames.filter((item) => item !== name)
+  draft.poolGroupName = draft.poolGroupNames[0] ?? ''
+}
+
+function removeLastPoolGroupNameWhenEmpty() {
+  if (poolGroupNameInput.value !== '' || draft.poolGroupNames.length === 0) return
+  draft.poolGroupNames.pop()
+  draft.poolGroupName = draft.poolGroupNames[0] ?? ''
+}
+
+function focusPoolGroupInput() {
+  poolGroupInputRef.value?.focus()
 }
 
 function scheduleRefresh() {
@@ -636,6 +719,7 @@ function formatPoolResetItem(item: PoolResetItem) {
 }
 
 onMounted(() => {
+  window.addEventListener('storage', syncExternalSettingsChange)
   if (isUpdaterView) {
     void initUpdaterView()
     return
@@ -653,7 +737,9 @@ watch(platformWindowHeight, async (height) => {
 }, { immediate: true })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('storage', syncExternalSettingsChange)
   if (timer !== null) window.clearInterval(timer)
+  if (saveMessageTimer !== null) window.clearTimeout(saveMessageTimer)
   if (unlistenMoved) unlistenMoved()
 })
 </script>

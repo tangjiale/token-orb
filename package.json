@@ -1,15 +1,24 @@
 {
   "name": "token-orb",
-  "version": "0.2.2",
+  "version": "0.2.3",
+  "release": {
+    "notes": [
+      "增加支持配置多个分组统计监测"
+    ]
+  },
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
+    "prebuild": "npm run release:sync",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "tauri": "tauri",
+    "pretauri": "npm run release:sync",
     "desktop": "tauri dev",
+    "predesktop": "npm run release:sync",
+    "release:sync": "node scripts/sync-release-metadata.mjs",
     "release:tag": "bash scripts/release-tag.sh"
   },
   "dependencies": {

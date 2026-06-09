@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-TAG="${1:-}"
-MESSAGE="${2:-}"
-
-if [[ -z "$TAG" ]]; then
-  echo "用法: npm run release:tag -- v0.1.1 [发布说明]"
+if [[ "$#" -gt 0 ]]; then
+  echo "错误: release:tag 不再接收版本号或发布说明参数"
+  echo "请只修改 package.json 的 version 和 release.notes，然后运行 npm run release:tag"
   exit 1
 fi
 
-if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  echo "错误: tag 必须使用 v 开头的语义化版本，例如 v0.1.1"
-  exit 1
-fi
+node scripts/sync-release-metadata.mjs
+
+TAG="$(node -e "const p = require('./package.json'); process.stdout.write('v' + p.version)")"
+MESSAGE="$(node -e "const p = require('./package.json'); const notes = p.release && p.release.notes; process.stdout.write(Array.isArray(notes) ? notes.filter(Boolean).join('\n') : String(notes || '').trim())")"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "错误: 当前目录不是 Git 仓库"
@@ -27,6 +25,7 @@ fi
 
 if [[ -n "$(git status --porcelain)" ]]; then
   echo "错误: 工作区存在未提交改动，请先提交或清理后再发布"
+  echo "提示: 版本号和更新记录只改 package.json，然后运行 npm run release:sync，把同步结果一起提交。"
   git status --short
   exit 1
 fi
@@ -45,12 +44,9 @@ fi
 
 git push origin main
 
-if [[ -z "$MESSAGE" ]]; then
-  MESSAGE="Release $TAG"
-fi
-
 git tag -a "$TAG" -m "$MESSAGE"
 git push origin "$TAG"
 
 echo "已发布 tag: $TAG"
+echo "Release 更新记录来自 package.json release.notes。"
 echo "GitHub Actions 将自动打包 macOS / Windows 安装包并发布 Release。"
