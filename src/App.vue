@@ -16,9 +16,17 @@
         <input v-model="draft.adminApiKey" type="password" placeholder="用于读取系统监控数据" />
       </label>
 
-      <label class="field">
-        <span>个人 JWT / Bearer Token（可选）</span>
+      <label class="field personal-token-field">
+        <span class="field-heading">
+          <span>个人 JWT / Bearer Token（可选）</span>
+          <button class="secondary-mini-button" type="button" :disabled="personalTokenTesting" @click.prevent.stop="testPersonalToken">
+            {{ personalTokenTesting ? '测试中' : '测试' }}
+          </button>
+        </span>
         <input v-model="draft.personalToken" type="password" placeholder="用于悬浮球个人数据" />
+        <em v-if="personalTokenTestMessage" class="field-message" :class="personalTokenTestState">
+          {{ personalTokenTestMessage }}
+        </em>
       </label>
 
       <label class="field pool-group-field">
@@ -139,7 +147,22 @@
         <div class="section-title">
           <Users :size="16" />
           <span>今日用量榜</span>
-          <div class="pool-summary-badges">
+        </div>
+        <div v-if="adminMetrics.userRanking.length === 0" class="empty-line">暂无数据</div>
+        <div v-for="item in adminMetrics.userRanking" :key="item.userId ?? item.displayName" class="ranking-row">
+          <b>#{{ item.rank }}</b>
+          <span>{{ item.displayName }}</span>
+          <strong>{{ formatTokenCount(item.tokens) }}</strong>
+        </div>
+      </div>
+
+      <div v-if="hasAdmin" class="account-details-box">
+        <button class="account-details-toggle" type="button" @click="toggleAccountDetails">
+          <span class="account-details-title">
+            <Users :size="16" />
+            <span>账号信息</span>
+          </span>
+          <span class="pool-summary-badges">
             <span class="pool-summary-badge account-badge" title="账号：正常 / 限流中 / 错误 / 总数量">
               <Users :size="12" />
               <span>账号：</span>
@@ -158,13 +181,50 @@
               <span>容量：</span>
               <strong>{{ formattedPoolCapacity }}</strong>
             </span>
-          </div>
-        </div>
-        <div v-if="adminMetrics.userRanking.length === 0" class="empty-line">暂无数据</div>
-        <div v-for="item in adminMetrics.userRanking" :key="item.userId ?? item.displayName" class="ranking-row">
-          <b>#{{ item.rank }}</b>
-          <span>{{ item.displayName }}</span>
-          <strong>{{ formatTokenCount(item.tokens) }}</strong>
+          </span>
+          <ChevronUp v-if="accountDetailsExpanded" class="account-details-chevron" :size="16" />
+          <ChevronDown v-else class="account-details-chevron" :size="16" />
+        </button>
+
+        <div v-if="accountDetailsExpanded" class="account-details-list">
+          <div v-if="adminMetrics.poolAccountDetails.length === 0" class="empty-line">暂无账号详情</div>
+          <article
+            v-for="item in adminMetrics.poolAccountDetails"
+            :key="`${item.rank}-${item.name}`"
+            class="account-detail-card"
+            :class="item.status"
+          >
+            <div class="account-detail-card__head">
+              <span class="account-detail-card__identity">
+                <b>#{{ item.rank }}</b>
+                <span>{{ item.name }}</span>
+              </span>
+              <span class="account-status-pill" :class="item.status">{{ item.statusText }}</span>
+            </div>
+            <div class="account-detail-card__meta">
+              <span class="account-today-stats">
+                <span>请求 <strong>{{ formatRequestCount(item.todayRequests) }}</strong></span>
+                <span>Token <strong>{{ formatCompactTokenCount(item.todayTokens) }}</strong></span>
+              </span>
+              <span class="account-schedule-stack">
+                <span class="schedule-pill" :class="{ off: !item.schedulable }">
+                  <i></i>
+                  {{ item.scheduleText }}
+                </span>
+                <span class="account-capacity-pill" :class="{ active: (item.capacityUsed ?? 0) > 0 }">{{ item.capacityText }}</span>
+              </span>
+              <span class="usage-windows">
+                <span v-if="item.usageWindows.length === 0" class="usage-window empty">无可用窗口</span>
+                <span v-for="window in item.usageWindows" :key="window.type" class="usage-window">
+                  <span class="usage-window-label">{{ window.type }}</span>
+                  <span class="usage-window-bar">
+                    <i :style="{ width: formatAccountWindowWidth(window.remainingPercent) }"></i>
+                  </span>
+                  <span>{{ formatAccountWindowText(window) }}</span>
+                </span>
+              </span>
+            </div>
+          </article>
         </div>
       </div>
 
@@ -222,6 +282,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
+  ChevronDown,
+  ChevronUp,
   ListChecks,
   MonitorDot,
   Network,
@@ -237,6 +299,7 @@ import {
   formatPoolCapacity,
   formatTokenCount,
   type AdminMonitorMetrics,
+  type PoolAccountUsageWindow,
   type PoolResetItem,
   type TokenOrbMetrics
 } from '@/domain/tokenMetrics'
@@ -274,6 +337,7 @@ const adminMetrics = ref<AdminMonitorMetrics>({
   poolResetItems: [],
   poolAccounts: null,
   poolCapacity: null,
+  poolAccountDetails: [],
   userRanking: [],
   updatedAt: null
 })
@@ -284,7 +348,11 @@ const isUpdaterView = view === 'updater'
 const loading = ref(false)
 const errorMessage = ref('')
 const saveMessage = ref('')
+const personalTokenTesting = ref(false)
+const personalTokenTestState = ref<'success' | 'error' | ''>('')
+const personalTokenTestMessage = ref('')
 const personalCollapsed = ref(false)
+const accountDetailsExpanded = ref(false)
 const appVersion = ref('0.1.0')
 const updateVersion = ref('')
 const updateBody = ref('')
@@ -338,12 +406,16 @@ const poolFillStyle = computed(() => {
 })
 const platformShellStyle = computed(() => {
   const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
-  const height = Math.max(300, 226 + rankingRows * 30)
+  const accountDetailsRows = accountDetailsExpanded.value ? Math.min(adminMetrics.value.poolAccountDetails.length, 6) : 0
+  const accountDetailsHeight = accountDetailsExpanded.value ? 60 + accountDetailsRows * 66 : 48
+  const height = Math.max(348, 238 + rankingRows * 30 + accountDetailsHeight)
   return { height: `${height}px` }
 })
 const platformWindowHeight = computed(() => {
   const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
-  return Math.max(300, 226 + rankingRows * 30)
+  const accountDetailsRows = accountDetailsExpanded.value ? Math.min(adminMetrics.value.poolAccountDetails.length, 6) : 0
+  const accountDetailsHeight = accountDetailsExpanded.value ? 60 + accountDetailsRows * 66 : 48
+  return Math.max(348, 238 + rankingRows * 30 + accountDetailsHeight)
 })
 const statusClass = computed(() => {
   if (!hasAdmin.value && !hasPersonal.value) return 'idle'
@@ -367,10 +439,28 @@ async function refreshAll() {
   if (!hasAdmin.value && !hasPersonal.value) return
   loading.value = true
   errorMessage.value = ''
+  const errors: string[] = []
+  let successCount = 0
   try {
-    await Promise.all([refreshPersonal(), refreshAdmin()])
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : '请求失败'
+    if (hasAdmin.value) {
+      try {
+        await refreshAdmin()
+        successCount += 1
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : '管理员 API 请求失败')
+      }
+    }
+    if (hasPersonal.value) {
+      try {
+        await refreshPersonal()
+        successCount += 1
+      } catch (error) {
+        errors.push(error instanceof Error ? error.message : '个人 JWT 请求失败')
+      }
+    }
+    if (errors.length > 0 && successCount === 0) {
+      errorMessage.value = errors[0] || '请求失败'
+    }
   } finally {
     loading.value = false
   }
@@ -391,6 +481,54 @@ async function refreshAdmin() {
     apiKey: settings.value.adminApiKey,
     poolGroupNames: settings.value.poolGroupNames
   })
+}
+
+function toggleAccountDetails() {
+  accountDetailsExpanded.value = !accountDetailsExpanded.value
+}
+
+function formatAccountWindowWidth(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '0%'
+  return `${Math.min(100, Math.max(0, Math.round(value)))}%`
+}
+
+function formatRequestCount(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '--'
+  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value)
+}
+
+function formatCompactTokenCount(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '--'
+  if (value >= 1_000_000_000) return `${formatCompactNumber(value / 1_000_000_000)}B`
+  if (value >= 1_000_000) return `${formatCompactNumber(value / 1_000_000)}M`
+  if (value >= 1_000) return `${formatCompactNumber(value / 1_000)}K`
+  return formatCompactNumber(value)
+}
+
+function formatCompactNumber(value: number): string {
+  const text = value.toFixed(1)
+  return text.endsWith('.0') ? text.slice(0, -2) : text
+}
+
+function formatAccountWindowText(item: PoolAccountUsageWindow): string {
+  const remaining = Math.round(item.remainingPercent)
+  const resetRemain = formatUsageWindowRemain(item.resetAt)
+  return resetRemain === '--' ? `剩余 ${remaining}%` : `剩余 ${remaining}% · ${resetRemain}`
+}
+
+function formatUsageWindowRemain(value: string | null): string {
+  if (!value) return '--'
+  const resetAt = Date.parse(value)
+  if (!Number.isFinite(resetAt)) return '--'
+  const remainingMs = resetAt - Date.now()
+  if (remainingMs <= 0) return '现在'
+  const totalMinutes = Math.ceil(remainingMs / 60000)
+  const days = Math.floor(totalMinutes / 1440)
+  const hours = Math.floor((totalMinutes % 1440) / 60)
+  const minutes = totalMinutes % 60
+  if (days > 0) return hours > 0 ? `${days}d ${hours}h` : `${days}d`
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`
+  return `${minutes}m`
 }
 
 async function initUpdaterView() {
@@ -491,9 +629,46 @@ function saveDraft() {
   addPoolGroupName()
   settings.value = saveSettings({ ...draft })
   syncSettingsDraft(settings.value)
+  personalTokenTestMessage.value = ''
+  personalTokenTestState.value = ''
   showSaveMessage()
   scheduleRefresh()
   void refreshAll()
+}
+
+async function testPersonalToken() {
+  const baseUrl = draft.sub2apiBaseUrl.trim()
+  const token = draft.personalToken.trim()
+  personalTokenTestMessage.value = ''
+  personalTokenTestState.value = ''
+  if (!baseUrl) {
+    personalTokenTestState.value = 'error'
+    personalTokenTestMessage.value = '请先填写 Base URL'
+    return
+  }
+  if (!token) {
+    personalTokenTestState.value = 'error'
+    personalTokenTestMessage.value = '请先填写个人 JWT'
+    return
+  }
+
+  personalTokenTesting.value = true
+  try {
+    await fetchSub2apiMetrics({ baseUrl, token })
+    personalTokenTestState.value = 'success'
+    personalTokenTestMessage.value = '个人 JWT 正常'
+  } catch (error) {
+    personalTokenTestState.value = 'error'
+    personalTokenTestMessage.value = formatErrorMessage(error, '个人 JWT 测试失败')
+  } finally {
+    personalTokenTesting.value = false
+  }
+}
+
+function formatErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim() !== '') return error.message
+  if (typeof error === 'string' && error.trim() !== '') return error.trim()
+  return fallback
 }
 
 function showSaveMessage() {

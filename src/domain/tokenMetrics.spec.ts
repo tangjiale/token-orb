@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   buildSub2apiHeaders,
   calculatePoolRemainingPercent,
@@ -11,6 +11,7 @@ import {
   formatPoolCapacity,
   formatPoolAccountCount,
   formatTokenCount,
+  listPoolAccountDetails,
   listPoolResetItems,
   normalizeBaseUrl,
   parseGroups,
@@ -19,7 +20,12 @@ import {
   parseUserRanking,
   parseUsers
 } from './tokenMetrics'
-import { buildRealtimeUrl } from './sub2apiClient'
+import { buildRealtimeUrl, fetchAdminMonitorMetrics, fetchSub2apiMetrics } from './sub2apiClient'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+  vi.useRealTimers()
+})
 
 describe('tokenMetrics', () => {
   it('normalizes sub2api base url without trailing slash', () => {
@@ -86,6 +92,136 @@ describe('tokenMetrics', () => {
     expect(countPoolAccounts(accounts, [2, 5])).toEqual({ active: 2, limited: 1, error: 1, total: 4 })
   })
 
+  it('lists account details for selected groups with status, scheduling, usage and window fields', () => {
+    const accounts = [
+      {
+        id: 11,
+        name: '由磊',
+        email: '707200583@163.com',
+        group_id: 2,
+        status: 'active',
+        schedulable: true,
+        current_concurrency: 0,
+        concurrency: 10,
+        today_requests: 159,
+        today_tokens: 52220000,
+        extra: {
+          codex_5h_used_percent: 9,
+          codex_5h_reset_at: '2026-03-16T12:37:00Z',
+          codex_7d_used_percent: 7,
+          codex_7d_reset_at: '2026-03-23T09:00:00Z'
+        }
+      },
+      {
+        id: 12,
+        email: 'punks.salver_6h+g4@icloud.com',
+        group_ids: [5],
+        status: 'rate_limited',
+        schedulable: true,
+        extra: {
+          daily_requests: 158,
+          daily_tokens: 22560000,
+          codex_5h_used_percent: 51,
+          codex_5h_reset_at: '2026-03-20T08:00:00Z',
+          codex_7d_used_percent: 50,
+          codex_usage_updated_at: '2026-03-16T08:00:00Z',
+          codex_7d_reset_after_seconds: 604800
+        }
+      },
+      {
+        id: 13,
+        account: 'globs-artless.1n+g3@icloud.com',
+        groups: [{ id: 2, name: 'codex池' }],
+        status: 'error',
+        schedulable: false,
+        error_message: 'upstream auth failed'
+      },
+      {
+        id: 14,
+        name: '其它分组',
+        group_id: 9,
+        status: 'active',
+        today_tokens: 999
+      }
+    ]
+
+    expect(listPoolAccountDetails(accounts, [2, 5], new Date('2026-03-16T09:00:00Z'))).toEqual([
+      {
+        rank: 1,
+        name: '由磊（707200583@163.com）',
+        status: 'normal',
+        statusText: '正常',
+        schedulable: true,
+        scheduleText: '调度中',
+        capacityText: '0 / 10',
+        capacityUsed: 0,
+        todayRequests: 159,
+        todayTokens: 52220000,
+        usageWindows: [
+          { type: '5h', remainingPercent: 91, resetAt: '2026-03-16T12:37:00.000Z' },
+          { type: '7d', remainingPercent: 93, resetAt: '2026-03-23T09:00:00.000Z' }
+        ]
+      },
+      {
+        rank: 2,
+        name: 'punks.salver_6h+g4@icloud.com',
+        status: 'limited',
+        statusText: '限流',
+        schedulable: true,
+        scheduleText: '调度中',
+        capacityText: '--',
+        capacityUsed: null,
+        todayRequests: 158,
+        todayTokens: 22560000,
+        usageWindows: [
+          { type: '5h', remainingPercent: 49, resetAt: '2026-03-20T08:00:00.000Z' },
+          { type: '7d', remainingPercent: 50, resetAt: '2026-03-23T08:00:00.000Z' }
+        ]
+      },
+      {
+        rank: 3,
+        name: 'globs-artless.1n+g3@icloud.com',
+        status: 'error',
+        statusText: '错误',
+        schedulable: false,
+        scheduleText: '已关闭',
+        capacityText: '--',
+        capacityUsed: null,
+        todayRequests: null,
+        todayTokens: null,
+        usageWindows: []
+      }
+    ])
+  })
+
+  it('uses batch today stats by account id for account detail requests and tokens', () => {
+    const accounts = [
+      {
+        id: 11,
+        name: 'CR39-UQY5-9C6N-402',
+        group_id: 2,
+        status: 'active',
+        current_concurrency: 3,
+        concurrency: 10,
+        extra: {
+          codex_5h_used_percent: 32
+        }
+      }
+    ]
+
+    expect(listPoolAccountDetails(accounts, 2, new Date('2026-03-16T09:00:00Z'), {
+      '11': { requests: 159, tokens: 18090000 }
+    })).toEqual([
+      expect.objectContaining({
+        name: 'CR39-UQY5-9C6N-402',
+        capacityText: '3 / 10',
+        capacityUsed: 3,
+        todayRequests: 159,
+        todayTokens: 18090000
+      })
+    ])
+  })
+
   it('excludes limited and errored accounts from selected group active count', () => {
     const accounts = [
       { group_id: 2, status: 'active' },
@@ -141,6 +277,83 @@ describe('tokenMetrics', () => {
     expect(buildRealtimeUrl('http://127.0.0.1/api/v1/admin/groups/capacity-summary', 1710000000000)).toBe(
       'http://127.0.0.1/api/v1/admin/groups/capacity-summary?_ts=1710000000000'
     )
+  })
+
+  it('requests full admin account records so account details can show today requests and tokens', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-16T09:00:00.000Z'))
+    const requestedUrls: string[] = []
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
+    vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL) => {
+      requestedUrls.push(String(url))
+      const pathname = new URL(String(url)).pathname
+      const payload = pathname.endsWith('/api/v1/admin/accounts')
+        ? { data: [{ id: 1, group_id: 2, status: 'active', today_requests: 9, today_tokens: 1200 }] }
+        : { data: [] }
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }))
+
+    await fetchAdminMonitorMetrics({
+      baseUrl: 'http://127.0.0.1:8081',
+      apiKey: 'admin-key'
+    })
+
+    const accountUrl = requestedUrls.find((url) => url.includes('/api/v1/admin/accounts?'))
+    expect(accountUrl).toBeTruthy()
+    expect(accountUrl).toContain('page_size=200')
+    expect(accountUrl).not.toContain('lite=true')
+  })
+
+  it('loads batch today stats and merges them into admin account details', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-16T09:00:00.000Z'))
+    const requests: Array<{ url: string; init?: RequestInit }> = []
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
+    vi.stubGlobal('fetch', vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
+      const urlText = String(url)
+      requests.push({ url: urlText, init })
+      const pathname = new URL(urlText).pathname
+      const payload = pathname.endsWith('/api/v1/admin/accounts')
+        ? { data: [{ id: 11, name: 'CR39-UQY5-9C6N-402', group_id: 2, status: 'active' }] }
+        : pathname.endsWith('/api/v1/admin/accounts/today-stats/batch')
+          ? { data: { stats: { '11': { requests: 159, tokens: 18090000, cost: 13.08, user_cost: 13.08 } } } }
+          : { data: [] }
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }))
+
+    const metrics = await fetchAdminMonitorMetrics({
+      baseUrl: 'http://127.0.0.1:8081',
+      apiKey: 'admin-key'
+    })
+
+    const batchRequest = requests.find((item) => item.url.includes('/api/v1/admin/accounts/today-stats/batch'))
+    expect(batchRequest?.init?.method).toBe('POST')
+    expect(batchRequest?.init?.body).toBe(JSON.stringify({ account_ids: [11] }))
+    expect(metrics.poolAccountDetails[0]).toEqual(expect.objectContaining({
+      todayRequests: 159,
+      todayTokens: 18090000
+    }))
+  })
+
+  it('surfaces personal token auth errors from sub2api responses', async () => {
+    Reflect.deleteProperty(window, '__TAURI_INTERNALS__')
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      message: 'token invalid or expired'
+    }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    })))
+
+    await expect(fetchSub2apiMetrics({
+      baseUrl: 'http://127.0.0.1:8081',
+      token: 'expired-jwt'
+    })).rejects.toThrow('认证失败，Token 错误或已失效：token invalid or expired')
   })
 
   it('parses user token ranking for admin monitor list', () => {

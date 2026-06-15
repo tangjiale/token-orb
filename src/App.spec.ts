@@ -12,6 +12,7 @@ vi.mock('@/domain/sub2apiClient', () => ({
     poolResetItems: [],
     poolAccounts: null,
     poolCapacity: null,
+    poolAccountDetails: [],
     userRanking: [],
     updatedAt: new Date().toISOString()
   })),
@@ -68,12 +69,127 @@ describe('App settings sync', () => {
 
   it('shows a saved confirmation after saving settings', async () => {
     window.history.replaceState({}, '', '/?view=settings')
-    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...baseSettings,
+      personalToken: 'bad-jwt'
+    }))
+    vi.mocked(fetchSub2apiMetrics).mockRejectedValueOnce(new Error('请求失败'))
     const wrapper = mount(App)
 
     await wrapper.get('button.primary-button').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('配置已保存')
+    expect(wrapper.text()).not.toContain('请求失败')
+    expect(fetchAdminMonitorMetrics).toHaveBeenCalled()
+    expect(fetchSub2apiMetrics).toHaveBeenCalled()
+  })
+
+  it('tests personal JWT independently from admin API settings', async () => {
+    window.history.replaceState({}, '', '/?view=settings')
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...baseSettings,
+      personalToken: 'personal-jwt'
+    }))
+    const wrapper = mount(App)
+    await flushPromises()
+    vi.clearAllMocks()
+
+    await wrapper.get('button.secondary-mini-button').trigger('click')
+    await flushPromises()
+
+    expect(fetchSub2apiMetrics).toHaveBeenCalledWith({
+      baseUrl: baseSettings.sub2apiBaseUrl,
+      token: 'personal-jwt'
+    })
+    expect(fetchAdminMonitorMetrics).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('个人 JWT 正常')
+  })
+
+  it('shows the actual personal JWT test error message', async () => {
+    window.history.replaceState({}, '', '/?view=settings')
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...baseSettings,
+      personalToken: 'expired-jwt'
+    }))
+    const wrapper = mount(App)
+    await flushPromises()
+    vi.clearAllMocks()
+    vi.mocked(fetchSub2apiMetrics).mockRejectedValueOnce('认证失败，Token 错误或已失效（HTTP 401）')
+
+    await wrapper.get('button.secondary-mini-button').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('认证失败，Token 错误或已失效（HTTP 401）')
+    expect(wrapper.text()).not.toContain('个人 JWT 测试失败')
+  })
+
+  it('keeps usage ranking visible and toggles group account details', async () => {
+    vi.setSystemTime(new Date('2026-03-16T09:00:00.000Z'))
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: 52220000,
+      poolRemainingPercent: 91,
+      poolLatestResetAt: '2026-03-16T12:37:00.000Z',
+      poolResetItems: [],
+      poolAccounts: { active: 5, limited: 1, error: 1, total: 7 },
+      poolCapacity: { groupId: null, concurrencyUsed: 0, concurrencyMax: 50 },
+      poolAccountDetails: [
+        {
+          rank: 1,
+          name: '由磊（707200583@163.com）',
+          status: 'normal',
+          statusText: '正常',
+          schedulable: true,
+          scheduleText: '调度中',
+          capacityText: '0 / 10',
+          capacityUsed: 0,
+          todayRequests: 159,
+          todayTokens: 52220000,
+          usageWindows: [
+            { type: '5h', remainingPercent: 91, resetAt: '2026-03-16T12:37:00.000Z' },
+            { type: '7d', remainingPercent: 93, resetAt: '2026-03-23T09:00:00.000Z' }
+          ]
+        }
+      ],
+      userRanking: [
+        {
+          rank: 1,
+          userId: 2,
+          name: '由磊',
+          email: '707200583@163.com',
+          displayName: '由磊（707200583@163.com）',
+          tokens: 52220000
+        }
+      ],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('今日用量榜')
+    expect(wrapper.text()).toContain('账号信息')
+    expect(wrapper.text()).not.toContain('分组账号详情')
+    expect(wrapper.text()).toContain('账号：5/1/1/7')
+    expect(wrapper.text()).toContain('容量：0 / 50')
+    expect(wrapper.text()).toContain('由磊（707200583@163.com）')
+    expect(wrapper.text()).not.toContain('调度中')
+    expect(wrapper.text()).not.toContain('剩余 91%')
+
+    await wrapper.get('button.account-details-toggle').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('调度中')
+    expect(wrapper.text()).toContain('0 / 10')
+    expect(wrapper.text()).toContain('请求 159')
+    expect(wrapper.text()).toContain('Token 52.2M')
+    expect(wrapper.text()).toContain('5h剩余 91% · 3h 37m')
+    expect(wrapper.text()).toContain('7d剩余 93% · 7d')
+
+    await wrapper.get('button.account-details-toggle').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('调度中')
+    expect(wrapper.text()).not.toContain('5h剩余 91%')
   })
 })

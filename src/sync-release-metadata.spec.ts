@@ -80,6 +80,29 @@ describe('syncReleaseMetadata', () => {
     expect(read('src-tauri/Cargo.lock', fixture)).toContain('name = "token-orb"\nversion = "1.2.3"')
   })
 
+  it('支持 Windows CRLF 换行的 Cargo.lock', () => {
+    const fixture = createTokenOrbFixture({
+      packageJson: {
+        name: 'token-orb',
+        version: '1.2.3',
+        release: {
+          notes: '统一维护版本号和更新记录',
+        },
+      },
+    })
+
+    writeFileSync(path.join(fixture.rootDir, 'src-tauri', 'Cargo.lock'), [
+      '[[package]]',
+      'name = "token-orb"',
+      'version = "0.0.1"',
+      '',
+    ].join('\r\n'))
+
+    syncReleaseMetadata(fixture.rootDir)
+
+    expect(read('src-tauri/Cargo.lock', fixture)).toContain('name = "token-orb"\r\nversion = "1.2.3"')
+  })
+
   it('拒绝缺失发布说明，避免 GitHub Release 继续写死在 workflow', () => {
     const fixture = createTokenOrbFixture({
       packageJson: {

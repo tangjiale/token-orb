@@ -80,6 +80,7 @@ input {
 .platform-shell {
   width: 370px;
   min-height: 300px;
+  overflow: hidden;
   background: transparent;
 }
 
@@ -578,10 +579,320 @@ input {
   font-weight: 800;
 }
 
+.account-details-box {
+  margin-top: 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+  padding-top: 12px;
+}
+
+.account-details-toggle {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  color: #e2e8f0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.account-details-title {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  color: #e2e8f0;
+  font-weight: 800;
+  text-align: left;
+}
+
+.account-details-chevron {
+  flex: 0 0 auto;
+  color: #94a3b8;
+}
+
+.account-details-list {
+  display: grid;
+  max-height: 396px;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  margin-top: 10px;
+  padding-right: 2px;
+}
+
+.account-details-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.account-details-list::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.account-details-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.38);
+}
+
+.account-detail-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.34);
+  padding: 9px;
+}
+
+.account-detail-card__head,
+.account-detail-card__identity,
+.schedule-pill,
+.usage-window {
+  display: flex;
+  align-items: center;
+}
+
+.account-detail-card__head {
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.account-detail-card__identity {
+  min-width: 0;
+  gap: 7px;
+}
+
+.account-detail-card__identity b {
+  flex: 0 0 auto;
+  color: #20e3b2;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.account-detail-card__identity span {
+  min-width: 0;
+  overflow: hidden;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-status-pill {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 16px;
+}
+
+.account-status-pill.normal {
+  color: #20e3b2;
+  background: rgba(7, 47, 46, 0.72);
+}
+
+.account-status-pill.limited {
+  color: #fbbf24;
+  background: rgba(67, 35, 11, 0.78);
+}
+
+.account-status-pill.error {
+  color: #fb7185;
+  background: rgba(76, 5, 25, 0.72);
+}
+
+.account-status-pill.disabled {
+  color: #94a3b8;
+  background: rgba(71, 85, 105, 0.38);
+}
+
+.account-detail-card__meta {
+  display: grid;
+  grid-template-columns: 94px 54px minmax(132px, 1fr);
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  margin-top: 7px;
+  color: #cbd5e1;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.account-today-stats {
+  display: grid;
+  width: 94px;
+  min-width: 0;
+  gap: 3px;
+}
+
+.account-today-stats span {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+  overflow: visible;
+  white-space: nowrap;
+}
+
+.account-detail-card__meta strong {
+  flex: 0 0 auto;
+  color: #20e3b2;
+  font-weight: 900;
+}
+
+.account-schedule-stack {
+  display: grid;
+  width: 54px;
+  min-width: 0;
+  justify-items: center;
+  gap: 3px;
+}
+
+.schedule-pill {
+  width: 50px;
+  min-width: 0;
+  justify-content: center;
+  gap: 3px;
+  height: 20px;
+  border-radius: 999px;
+  color: #20e3b2;
+  background: rgba(7, 47, 46, 0.68);
+  padding: 0 4px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.account-capacity-pill {
+  display: inline-flex;
+  width: 50px;
+  height: 15px;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 999px;
+  color: #94a3b8;
+  background: rgba(71, 85, 105, 0.32);
+  font-size: 9px;
+  font-weight: 850;
+  line-height: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-capacity-pill.active {
+  color: #fbbf24;
+  background: rgba(120, 53, 15, 0.56);
+}
+
+.schedule-pill.off {
+  color: #94a3b8;
+  background: rgba(71, 85, 105, 0.36);
+}
+
+.schedule-pill i {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.usage-windows {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  gap: 5px;
+  overflow: hidden;
+  justify-self: end;
+}
+
+.usage-window {
+  display: grid;
+  grid-template-columns: 15px 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  color: #94a3b8;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.usage-window.empty {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+  overflow: hidden;
+  color: #64748b;
+  text-overflow: ellipsis;
+}
+
+.usage-window-label {
+  color: #5eead4;
+  font-size: 10px;
+  font-weight: 900;
+  text-align: right;
+}
+
+.usage-window-bar {
+  position: relative;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.22);
+}
+
+.usage-window > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.usage-window-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: #20e3b2;
+  transition: width 180ms ease;
+}
+
+.account-detail-card.limited .usage-window-bar i {
+  background: #fbbf24;
+}
+
+.account-detail-card.error .usage-window-bar i,
+.account-detail-card.disabled .usage-window-bar i {
+  background: #64748b;
+}
+
 .field {
   display: grid;
   gap: 7px;
   margin-bottom: 12px;
+}
+
+.field-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.personal-token-field {
+  gap: 6px;
 }
 
 .field input {
@@ -598,6 +909,44 @@ input {
 .field input:focus {
   border-color: #20e3b2;
   box-shadow: 0 0 0 3px rgba(32, 227, 178, 0.12);
+}
+
+.secondary-mini-button {
+  flex: 0 0 auto;
+  height: 24px;
+  border: 1px solid rgba(32, 227, 178, 0.24);
+  border-radius: 8px;
+  color: #99f6e4;
+  background: rgba(7, 47, 46, 0.5);
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.secondary-mini-button:hover:not(:disabled) {
+  border-color: rgba(45, 212, 191, 0.48);
+  background: rgba(13, 148, 136, 0.34);
+}
+
+.secondary-mini-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.field-message {
+  min-height: 14px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 750;
+}
+
+.field-message.success {
+  color: #5eead4;
+}
+
+.field-message.error {
+  color: #fda4af;
 }
 
 .tag-input {

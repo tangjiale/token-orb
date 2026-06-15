@@ -1,9 +1,9 @@
 {
   "name": "token-orb",
-  "version": "0.2.3",
+  "version": "0.3.1",
   "release": {
     "notes": [
-      "增加支持配置多个分组统计监测"
+      "增加显示账号用量详情列表"
     ]
   },
   "private": true,

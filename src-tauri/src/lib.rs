@@ -12,6 +12,8 @@ mod tray_icon_rgba;
 struct Sub2apiRequest {
     url: String,
     headers: HashMap<String, String>,
+    method: Option<String>,
+    body: Option<serde_json::Value>,
 }
 
 pub fn run() {
@@ -79,10 +81,18 @@ pub fn run() {
 #[tauri::command]
 async fn sub2api_request(request: Sub2apiRequest) -> Result<serde_json::Value, String> {
     let client = reqwest::Client::new();
-    let mut builder = client.get(&request.url);
+    let method = request.method.as_deref().unwrap_or("GET").to_ascii_uppercase();
+    let mut builder = match method.as_str() {
+        "POST" => client.post(&request.url),
+        "GET" => client.get(&request.url),
+        _ => return Err(format!("sub2api 不支持的请求方法: {method}")),
+    };
 
     for (key, value) in request.headers {
         builder = builder.header(key, value);
+    }
+    if let Some(body) = request.body {
+        builder = builder.json(&body);
     }
 
     let response = builder
@@ -92,13 +102,58 @@ async fn sub2api_request(request: Sub2apiRequest) -> Result<serde_json::Value, S
     let status = response.status();
 
     if !status.is_success() {
-        return Err(format!("sub2api 请求失败: HTTP {status}"));
+        let detail = response.text().await.unwrap_or_default();
+        return Err(format_sub2api_http_error(status.as_u16(), &detail));
     }
 
     response
         .json::<serde_json::Value>()
         .await
         .map_err(|error| format!("sub2api 响应解析失败: {error}"))
+}
+
+fn format_sub2api_http_error(status: u16, detail: &str) -> String {
+    let message = read_sub2api_error_detail(detail);
+    if status == 401 || status == 403 {
+        if message.is_empty() {
+            return format!("认证失败，Token 错误或已失效（HTTP {status}）");
+        }
+        return format!("认证失败，Token 错误或已失效：{message}");
+    }
+
+    if message.is_empty() {
+        return format!("sub2api 请求失败: HTTP {status}");
+    }
+    format!("sub2api 请求失败（HTTP {status}）：{message}")
+}
+
+fn read_sub2api_error_detail(detail: &str) -> String {
+    let trimmed = detail.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(message) = read_error_message(&value) {
+            return message;
+        }
+    }
+
+    trimmed.to_string()
+}
+
+fn read_error_message(value: &serde_json::Value) -> Option<String> {
+    if let Some(message) = value.as_str().map(str::trim).filter(|message| !message.is_empty()) {
+        return Some(message.to_string());
+    }
+
+    let object = value.as_object()?;
+    for key in ["message", "error", "detail", "msg"] {
+        if let Some(message) = object.get(key).and_then(read_error_message) {
+            return Some(message);
+        }
+    }
+    None
 }
 
 fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, anchor: Option<PhysicalPosition<i32>>) {
@@ -140,7 +195,7 @@ fn open_settings<R: Runtime>(app: &AppHandle<R>) {
 
     let _ = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("index.html?view=settings".into()))
         .title("Token Orb 设置")
-        .inner_size(390.0, 490.0)
+        .inner_size(390.0, 570.0)
         .resizable(false)
         .decorations(true)
         .always_on_top(true)

@@ -11,6 +11,7 @@ export interface AdminMonitorMetrics {
   poolResetItems: PoolResetItem[]
   poolAccounts: PoolAccountSummary | null
   poolCapacity: PoolCapacitySummary | null
+  poolAccountDetails: PoolAccountDetailItem[]
   userRanking: UserTodayUsageRankItem[]
   updatedAt: string | null
 }
@@ -38,6 +39,35 @@ export interface PoolAccountDisplay {
 export interface PoolResetItem {
   status: 'normal' | 'limited'
   resetAt: string
+}
+
+export type PoolAccountDetailStatus = 'normal' | 'limited' | 'error' | 'disabled'
+
+export interface PoolAccountDetailItem {
+  rank: number
+  name: string
+  status: PoolAccountDetailStatus
+  statusText: string
+  schedulable: boolean
+  scheduleText: string
+  capacityText: string
+  capacityUsed: number | null
+  todayRequests: number | null
+  todayTokens: number | null
+  usageWindows: PoolAccountUsageWindow[]
+}
+
+export type PoolAccountUsageWindowType = '5h' | '7d'
+
+export interface PoolAccountUsageWindow {
+  type: PoolAccountUsageWindowType
+  remainingPercent: number
+  resetAt: string | null
+}
+
+export interface PoolAccountTodayStats {
+  requests: number | null
+  tokens: number | null
 }
 
 export interface UserTodayUsageRankItem {
@@ -259,6 +289,38 @@ export function listPoolResetItems(accounts: unknown[], groupId: PoolGroupIdSele
     .sort((a, b) => Date.parse(a.resetAt) - Date.parse(b.resetAt))
 }
 
+export function listPoolAccountDetails(
+  accounts: unknown[],
+  groupId: PoolGroupIdSelector = null,
+  now = new Date(),
+  todayStatsByAccountId: Record<string, PoolAccountTodayStats> = {}
+): PoolAccountDetailItem[] {
+  const wantedGroupIds = normalizeGroupIds(groupId)
+  return accounts
+    .filter((item) => accountMatchesGroupId(item, wantedGroupIds))
+    .map((item) => {
+      if (!isRecord(item)) return null
+      const extra = isRecord(item.extra) ? item.extra : null
+      const status = getAccountDetailStatus(item, now)
+      const todayStats = todayStatsByAccountId[readAccountIdString(item)] ?? null
+      return {
+        rank: 0,
+        name: formatAccountDetailName(item),
+        status,
+        statusText: formatAccountStatusText(status),
+        schedulable: item.schedulable !== false,
+        scheduleText: item.schedulable === false ? '已关闭' : '调度中',
+        capacityText: formatAccountCapacity(item),
+        capacityUsed: readAccountCapacityUsed(item),
+        todayRequests: readAccountTodayRequests(item, extra, todayStats),
+        todayTokens: readAccountTodayTokens(item, extra, todayStats),
+        usageWindows: listAccountUsageWindows(extra, now)
+      }
+    })
+    .filter((item): item is Omit<PoolAccountDetailItem, 'rank'> & { rank: number } => item !== null)
+    .map((item, index) => ({ ...item, rank: index + 1 }))
+}
+
 export function formatTokenCount(value: number | null): string {
   if (value === null || Number.isNaN(value)) return '--'
   if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(2)}B`
@@ -323,21 +385,41 @@ function readFirstNumber(record: Record<string, unknown> | null, keys: string[])
   return null
 }
 
+function readFirstString(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim() !== '') return value.trim()
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value)
+  }
+  return ''
+}
+
 function read5hUsedPercent(extra: Record<string, unknown>, now: Date): number | null {
   const used = readNumber(extra, 'codex_5h_used_percent')
   if (used === null) return null
-  if (isExpiredUsageWindow(extra, now)) return 0
+  if (isExpiredUsageWindow(extra, '5h', now)) return 0
   return Math.min(100, Math.max(0, used))
 }
 
 function read5hResetAt(extra: Record<string, unknown>): number | null {
-  const resetAtRaw = extra.codex_5h_reset_at
+  return readUsageResetAt(extra, '5h')
+}
+
+function readUsageUsedPercent(extra: Record<string, unknown>, type: PoolAccountUsageWindowType, now: Date): number | null {
+  const used = readNumber(extra, `codex_${type}_used_percent`)
+  if (used === null) return null
+  if (isExpiredUsageWindow(extra, type, now)) return 0
+  return Math.min(100, Math.max(0, used))
+}
+
+function readUsageResetAt(extra: Record<string, unknown>, type: PoolAccountUsageWindowType): number | null {
+  const resetAtRaw = extra[`codex_${type}_reset_at`]
   if (typeof resetAtRaw === 'string' && resetAtRaw.trim() !== '') {
     const resetAt = Date.parse(resetAtRaw)
     if (Number.isFinite(resetAt)) return resetAt
   }
 
-  const resetAfterSeconds = readNumber(extra, 'codex_5h_reset_after_seconds')
+  const resetAfterSeconds = readNumber(extra, `codex_${type}_reset_after_seconds`)
   const updatedAtRaw = extra.codex_usage_updated_at
   if (resetAfterSeconds === null || typeof updatedAtRaw !== 'string' || updatedAtRaw.trim() === '') return null
 
@@ -346,14 +428,14 @@ function read5hResetAt(extra: Record<string, unknown>): number | null {
   return updatedAt + resetAfterSeconds * 1000
 }
 
-function isExpiredUsageWindow(extra: Record<string, unknown>, now: Date): boolean {
-  const resetAtRaw = extra.codex_5h_reset_at
+function isExpiredUsageWindow(extra: Record<string, unknown>, type: PoolAccountUsageWindowType, now: Date): boolean {
+  const resetAtRaw = extra[`codex_${type}_reset_at`]
   if (typeof resetAtRaw === 'string' && resetAtRaw.trim() !== '') {
     const resetAt = Date.parse(resetAtRaw)
     return Number.isFinite(resetAt) && now.getTime() >= resetAt
   }
 
-  const resetAfterSeconds = readNumber(extra, 'codex_5h_reset_after_seconds')
+  const resetAfterSeconds = readNumber(extra, `codex_${type}_reset_after_seconds`)
   if (resetAfterSeconds === null) return false
   if (resetAfterSeconds <= 0) return true
 
@@ -408,6 +490,83 @@ function accountIsErrored(item: unknown): boolean {
   if (!isRecord(item)) return false
   const status = String(item.status ?? '').trim().toLowerCase()
   return status === 'error' || hasNonEmptyString(item.error_message) || hasNonEmptyString(item.errorMessage)
+}
+
+function getAccountDetailStatus(item: Record<string, unknown>, now: Date): PoolAccountDetailStatus {
+  const status = String(item.status ?? '').trim().toLowerCase()
+  if (accountIsErrored(item)) return 'error'
+  if (accountIsLimited(item, now)) return 'limited'
+  if (accountIsActive(item, now)) return 'normal'
+  if (status === 'active' && item.schedulable === false) return 'normal'
+  return 'disabled'
+}
+
+function formatAccountStatusText(status: PoolAccountDetailStatus): string {
+  if (status === 'normal') return '正常'
+  if (status === 'limited') return '限流'
+  if (status === 'error') return '错误'
+  return '停用'
+}
+
+function formatAccountDetailName(item: Record<string, unknown>): string {
+  const displayName = readFirstString(item, ['name', 'username'])
+  const email = readFirstString(item, ['email', 'account'])
+  if (displayName && email && displayName !== email) return `${displayName}（${email}）`
+  if (displayName) return displayName
+  if (email) return email
+  const id = readFirstString(item, ['id', 'account_id', 'accountId', 'token_id', 'tokenId'])
+  return id ? `账号 ${id}` : '账号'
+}
+
+function formatAccountCapacity(item: Record<string, unknown>): string {
+  const max = readFirstNumber(item, ['concurrency', 'capacity', 'max_concurrency', 'maxConcurrency'])
+  if (max === null) return '--'
+  const current = readAccountCapacityUsed(item) ?? 0
+  return `${Math.max(0, Math.round(current))} / ${Math.max(0, Math.round(max))}`
+}
+
+function readAccountCapacityUsed(item: Record<string, unknown>): number | null {
+  return readFirstNumber(item, ['current_concurrency', 'currentConcurrency', 'used_concurrency', 'usedConcurrency'])
+}
+
+function readAccountTodayTokens(
+  item: Record<string, unknown>,
+  extra: Record<string, unknown> | null,
+  todayStats: PoolAccountTodayStats | null
+): number | null {
+  return todayStats?.tokens
+    ?? readFirstNumber(item, ['today_tokens', 'todayTokens', 'tokens', 'total_tokens', 'daily_tokens'])
+    ?? readFirstNumber(extra, ['today_tokens', 'todayTokens', 'tokens', 'total_tokens', 'daily_tokens'])
+}
+
+function readAccountTodayRequests(
+  item: Record<string, unknown>,
+  extra: Record<string, unknown> | null,
+  todayStats: PoolAccountTodayStats | null
+): number | null {
+  return todayStats?.requests
+    ?? readFirstNumber(item, ['today_requests', 'todayRequests', 'requests', 'request_count', 'daily_requests'])
+    ?? readFirstNumber(extra, ['today_requests', 'todayRequests', 'requests', 'request_count', 'daily_requests'])
+}
+
+function readAccountIdString(item: Record<string, unknown>): string {
+  return readFirstString(item, ['id', 'account_id', 'accountId', 'token_id', 'tokenId'])
+}
+
+function listAccountUsageWindows(extra: Record<string, unknown> | null, now: Date): PoolAccountUsageWindow[] {
+  if (!extra) return []
+  return (['5h', '7d'] as const)
+    .map((type) => {
+      const usedPercent = readUsageUsedPercent(extra, type, now)
+      if (usedPercent === null) return null
+      const resetAt = readUsageResetAt(extra, type)
+      return {
+        type,
+        remainingPercent: Math.max(0, 100 - usedPercent),
+        resetAt: resetAt === null || resetAt <= now.getTime() ? null : new Date(resetAt).toISOString()
+      }
+    })
+    .filter((item): item is PoolAccountUsageWindow => item !== null)
 }
 
 function normalizeGroupIds(groupId: PoolGroupIdSelector): string[] {

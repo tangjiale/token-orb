@@ -6,6 +6,7 @@ import {
   findExactGroupIdsByNames,
   findPoolCapacitySummary,
   findLatestPoolResetAt,
+  listPoolAccountDetails,
   listPoolResetItems,
   normalizeBaseUrl,
   parseGroups,
@@ -15,10 +16,12 @@ import {
   parseUsers,
   readItems,
   type AdminMonitorMetrics,
+  type PoolAccountTodayStats,
   type TokenOrbMetrics
 } from './tokenMetrics'
 
 type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>
+type HttpMethod = 'GET' | 'POST'
 
 export interface Sub2apiConfig {
   baseUrl: string
@@ -65,13 +68,13 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
       ? poolGroupIds.map((groupId) =>
           requestJson(
             buildRealtimeUrl(
-              `${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true&group=${encodeURIComponent(String(groupId))}`,
+              `${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&group=${encodeURIComponent(String(groupId))}`,
               refreshAt
             ),
             realtimeHeaders
           )
         )
-      : [requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200&lite=true`, refreshAt), realtimeHeaders)]
+      : [requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts?page=1&page_size=200`, refreshAt), realtimeHeaders)]
 
   const [statsPayload, rankingPayload, usersPayload, accountsPayloads, capacityPayload] = await Promise.all([
     requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/stats?timezone=${encodeURIComponent(timezone)}`, refreshAt), realtimeHeaders),
@@ -83,6 +86,9 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
 
   const accountItems = groupMatched ? dedupeAccounts(accountsPayloads.flatMap((payload) => readItems(payload))) : []
   const selectedGroupIds = poolGroupIds.length > 0 ? poolGroupIds : null
+  const todayStatsByAccountId = groupMatched
+    ? await fetchAccountTodayStats(baseUrl, headers, accountItems, refreshAt)
+    : {}
 
   return {
     todayTotalTokens: parseTodayTokens(statsPayload),
@@ -91,6 +97,7 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
     poolResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds) : [],
     poolAccounts: groupMatched ? countPoolAccounts(accountItems, selectedGroupIds) : null,
     poolCapacity: groupMatched ? findPoolCapacitySummary(capacityPayload, selectedGroupIds) : null,
+    poolAccountDetails: groupMatched ? listPoolAccountDetails(accountItems, selectedGroupIds, new Date(), todayStatsByAccountId) : [],
     userRanking: parseUserRanking(rankingPayload, parseUsers(usersPayload)),
     updatedAt: new Date().toISOString()
   }
@@ -124,17 +131,128 @@ function getAccountDedupeKey(account: unknown, index: number): string {
   return `index:${index}`
 }
 
-async function requestJson(url: string, headers: Record<string, string>): Promise<unknown> {
+async function fetchAccountTodayStats(
+  baseUrl: string,
+  headers: Record<string, string>,
+  accounts: unknown[],
+  refreshAt: number
+): Promise<Record<string, PoolAccountTodayStats>> {
+  const accountIds = listAccountIds(accounts)
+  if (accountIds.length === 0) return {}
+
+  try {
+    const payload = await requestJson(
+      buildRealtimeUrl(`${baseUrl}/api/v1/admin/accounts/today-stats/batch`, refreshAt),
+      { ...headers, 'Content-Type': 'application/json' },
+      'POST',
+      { account_ids: accountIds }
+    )
+    return parseAccountTodayStats(payload)
+  } catch {
+    return {}
+  }
+}
+
+function listAccountIds(accounts: unknown[]): number[] {
+  const seen = new Set<number>()
+  const ids: number[] = []
+  accounts.forEach((account) => {
+    if (typeof account !== 'object' || account === null || Array.isArray(account)) return
+    const record = account as Record<string, unknown>
+    const id = readFiniteNumber(record.id ?? record.account_id ?? record.accountId ?? record.token_id ?? record.tokenId)
+    if (id === null || id <= 0 || seen.has(id)) return
+    seen.add(id)
+    ids.push(id)
+  })
+  return ids
+}
+
+function parseAccountTodayStats(payload: unknown): Record<string, PoolAccountTodayStats> {
+  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return {}
+  const record = payload as Record<string, unknown>
+  const data = typeof record.data === 'object' && record.data !== null && !Array.isArray(record.data)
+    ? record.data as Record<string, unknown>
+    : record
+  const stats = typeof data.stats === 'object' && data.stats !== null && !Array.isArray(data.stats)
+    ? data.stats as Record<string, unknown>
+    : {}
+
+  return Object.fromEntries(Object.entries(stats).map(([accountId, value]) => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+      return [accountId, { requests: null, tokens: null }]
+    }
+    const item = value as Record<string, unknown>
+    return [accountId, {
+      requests: readFiniteNumber(item.requests),
+      tokens: readFiniteNumber(item.tokens)
+    }]
+  }))
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+async function requestJson(
+  url: string,
+  headers: Record<string, string>,
+  method: HttpMethod = 'GET',
+  body?: unknown
+): Promise<unknown> {
   const invoke = await loadTauriInvoke()
   if (invoke) {
-    return invoke('sub2api_request', { request: { url, headers } })
+    return invoke('sub2api_request', { request: { url, headers, method, body } })
   }
 
-  const response = await fetch(url, { headers })
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: method === 'GET' || body === undefined ? undefined : JSON.stringify(body)
+  })
   if (!response.ok) {
-    throw new Error(`sub2api request failed: ${response.status}`)
+    throw new Error(await formatSub2apiHttpError(response))
   }
   return response.json()
+}
+
+async function formatSub2apiHttpError(response: Response): Promise<string> {
+  const detail = await readSub2apiErrorDetail(response)
+  const authFailed = response.status === 401 || response.status === 403
+  if (authFailed) {
+    return detail
+      ? `认证失败，Token 错误或已失效：${detail}`
+      : `认证失败，Token 错误或已失效（HTTP ${response.status}）`
+  }
+  return detail
+    ? `sub2api 请求失败（HTTP ${response.status}）：${detail}`
+    : `sub2api 请求失败：HTTP ${response.status}`
+}
+
+async function readSub2apiErrorDetail(response: Response): Promise<string> {
+  const text = await response.text().catch(() => '')
+  if (!text.trim()) return ''
+  try {
+    const parsed = JSON.parse(text) as unknown
+    return readErrorMessage(parsed) || text.trim()
+  } catch {
+    return text.trim()
+  }
+}
+
+function readErrorMessage(value: unknown): string {
+  if (typeof value === 'string') return value.trim()
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return ''
+  const record = value as Record<string, unknown>
+  for (const key of ['message', 'error', 'detail', 'msg']) {
+    const message = readErrorMessage(record[key])
+    if (message) return message
+  }
+  return ''
 }
 
 export function buildRealtimeUrl(url: string, timestamp = Date.now()): string {

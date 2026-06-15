@@ -127,15 +127,7 @@ function updateTomlPackageVersion(content, version) {
 
 function updatePackageVersionInCargoLock(filePath, packageName, version) {
   const content = readFileSync(filePath, 'utf8')
-  let found = false
-  const packageBlockPattern = new RegExp(
-    `(\\[\\[package\\]\\]\\nname = "${escapeRegExp(packageName)}"\\nversion = )"[^"]+"`,
-    'm',
-  )
-  const updated = content.replace(packageBlockPattern, (_, prefix) => {
-    found = true
-    return `${prefix}"${version}"`
-  })
+  const { found, updated } = updateCargoLockPackageVersion(content, packageName, version)
 
   if (!found) {
     throw new Error(`未找到 Cargo.lock 中的 ${packageName} 包版本: ${filePath}`)
@@ -143,6 +135,47 @@ function updatePackageVersionInCargoLock(filePath, packageName, version) {
 
   if (updated !== content) {
     writeFileSync(filePath, updated)
+  }
+}
+
+function updateCargoLockPackageVersion(content, packageName, version) {
+  const newline = content.includes('\r\n') ? '\r\n' : '\n'
+  const lines = content.split(/\r?\n/)
+  let inPackageBlock = false
+  let currentPackageMatches = false
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+
+    if (/^\s*\[\[package\]\]\s*$/.test(line)) {
+      inPackageBlock = true
+      currentPackageMatches = false
+      continue
+    }
+
+    if (inPackageBlock && /^\s*\[/.test(line)) {
+      inPackageBlock = false
+      currentPackageMatches = false
+      continue
+    }
+
+    if (inPackageBlock && line.trim() === `name = "${packageName}"`) {
+      currentPackageMatches = true
+      continue
+    }
+
+    if (inPackageBlock && currentPackageMatches && /^\s*version\s*=/.test(line)) {
+      lines[index] = line.replace(/^(\s*version\s*=\s*)"[^"]+"/, `$1"${version}"`)
+      return {
+        found: true,
+        updated: lines.join(newline),
+      }
+    }
+  }
+
+  return {
+    found: false,
+    updated: content,
   }
 }
 
@@ -159,10 +192,6 @@ function uniqueDelimiter(value) {
     delimiter = `TOKEN_ORB_RELEASE_BODY_${index}`
   }
   return delimiter
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function main() {
