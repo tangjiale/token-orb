@@ -47,6 +47,7 @@ jobs:
         run: node scripts/sync-release-metadata.mjs --github-output
 
       - name: Verify release tag
+        shell: bash
         run: |
           if [ "${GITHUB_REF_NAME}" != "${{ steps.release.outputs.tag }}" ]; then
             echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${{ steps.release.outputs.version }}"
