@@ -174,7 +174,7 @@
         <div v-for="(item, index) in displayedUserRanking" :key="item.userId ?? item.displayName" class="ranking-row">
           <b>#{{ index + 1 }}</b>
           <span>{{ item.displayName }}</span>
-          <div class="ranking-value">
+          <div class="ranking-value" :class="{ 'ranking-value--cost': rankingMode === 'cost' }">
             <strong>{{ formatTokenCount(item.tokens) }}</strong>
             <em class="token-cost">{{ formatCost(item.actualCost) }}</em>
           </div>

@@ -1,6 +1,6 @@
 :root {
   color: #f8fafc;
-  background: transparent;
+  background: #0f172a;
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 14px;
@@ -17,7 +17,7 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: transparent;
+  background: #0f172a;
 }
 
 body:has(.settings-shell) {
@@ -26,7 +26,7 @@ body:has(.settings-shell) {
 
 body:has(.platform-shell),
 body:has(.personal-shell) {
-  background: transparent;
+  background: #0f172a;
 }
 
 button,
@@ -81,7 +81,7 @@ input {
   width: 370px;
   min-height: 300px;
   overflow: hidden;
-  background: transparent;
+  background: #0f172a;
 }
 
 .orb {
@@ -271,7 +271,7 @@ input {
   min-height: 300px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 18px;
-  background: rgba(15, 23, 42, 0.82);
+  background: #0f172a;
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -629,6 +629,23 @@ input {
 
 .ranking-value .token-cost {
   margin-top: 2px;
+}
+
+.ranking-value--cost strong {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ranking-value--cost .token-cost {
+  order: -1;
+  margin-top: 0;
+  color: #fbbf24;
+  font-family: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  font-size: 14px;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: -0.02em;
 }
 
 .account-details-box {

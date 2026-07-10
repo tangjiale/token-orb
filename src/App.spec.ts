@@ -245,6 +245,7 @@ describe('App settings sync', () => {
     await flushPromises()
 
     expect(wrapper.get('.ranking-tab.active').text()).toBe('今日消费榜')
+    expect(wrapper.get('.ranking-value').classes()).toContain('ranking-value--cost')
     expect(firstRow()).toContain('高消费')
     expect(firstRow()).toContain('3.00M')
     expect(firstRow()).toContain('$9.90')

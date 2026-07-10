@@ -217,7 +217,7 @@ fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, anchor: Option<PhysicalPositio
         .inner_size(370.0, 300.0)
         .resizable(false)
         .decorations(false)
-        .transparent(true)
+        .transparent(false)
         .always_on_top(true)
         .skip_taskbar(true)
         .shadow(false)
