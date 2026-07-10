@@ -11,6 +11,7 @@ import {
   normalizeBaseUrl,
   parseGroups,
   parseLatestFirstTokenMs,
+  parseTodayActualCost,
   parseTodayTokens,
   parseUserRanking,
   parseUsers,
@@ -92,6 +93,7 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
 
   return {
     todayTotalTokens: parseTodayTokens(statsPayload),
+    todayTotalCost: parseTodayActualCost(statsPayload),
     poolRemainingPercent: groupMatched ? calculatePoolRemainingPercent(accountItems, selectedGroupIds) : null,
     poolLatestResetAt: groupMatched ? findLatestPoolResetAt(accountItems, selectedGroupIds) : null,
     poolResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds) : [],

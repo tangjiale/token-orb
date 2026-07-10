@@ -120,6 +120,7 @@
         <article class="monitor-card">
           <span>今日总 Token</span>
           <strong>{{ formattedAdminToday }}</strong>
+          <em class="token-cost">{{ formattedAdminTodayCost }}</em>
         </article>
         <article class="monitor-card">
           <span>5小时号池剩余量</span>
@@ -146,13 +147,37 @@
       <div v-if="hasAdmin" class="ranking-box">
         <div class="section-title">
           <Users :size="16" />
-          <span>今日用量榜</span>
+          <div class="ranking-tabs" role="tablist" aria-label="今日榜单切换">
+            <button
+              class="ranking-tab"
+              :class="{ active: rankingMode === 'tokens' }"
+              type="button"
+              role="tab"
+              :aria-selected="rankingMode === 'tokens'"
+              @click="rankingMode = 'tokens'"
+            >
+              今日用量榜
+            </button>
+            <button
+              class="ranking-tab"
+              :class="{ active: rankingMode === 'cost' }"
+              type="button"
+              role="tab"
+              :aria-selected="rankingMode === 'cost'"
+              @click="rankingMode = 'cost'"
+            >
+              今日消费榜
+            </button>
+          </div>
         </div>
         <div v-if="adminMetrics.userRanking.length === 0" class="empty-line">暂无数据</div>
-        <div v-for="item in adminMetrics.userRanking" :key="item.userId ?? item.displayName" class="ranking-row">
-          <b>#{{ item.rank }}</b>
+        <div v-for="(item, index) in displayedUserRanking" :key="item.userId ?? item.displayName" class="ranking-row">
+          <b>#{{ index + 1 }}</b>
           <span>{{ item.displayName }}</span>
-          <strong>{{ formatTokenCount(item.tokens) }}</strong>
+          <div class="ranking-value">
+            <strong>{{ formatTokenCount(item.tokens) }}</strong>
+            <em class="token-cost">{{ formatCost(item.actualCost) }}</em>
+          </div>
         </div>
       </div>
 
@@ -294,6 +319,7 @@ import {
 } from 'lucide-vue-next'
 import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 import {
+  formatCost,
   formatFirstToken,
   formatPoolAccountCount,
   formatPoolCapacity,
@@ -301,7 +327,8 @@ import {
   type AdminMonitorMetrics,
   type PoolAccountUsageWindow,
   type PoolResetItem,
-  type TokenOrbMetrics
+  type TokenOrbMetrics,
+  type UserTodayUsageRankItem
 } from '@/domain/tokenMetrics'
 import {
   hasAdminSettings,
@@ -332,6 +359,7 @@ const poolGroupInputRef = ref<HTMLInputElement | null>(null)
 const personalMetrics = ref<TokenOrbMetrics>({ todayTokens: null, firstTokenMs: null, updatedAt: null })
 const adminMetrics = ref<AdminMonitorMetrics>({
   todayTotalTokens: null,
+  todayTotalCost: null,
   poolRemainingPercent: null,
   poolLatestResetAt: null,
   poolResetItems: [],
@@ -353,6 +381,7 @@ const personalTokenTestState = ref<'success' | 'error' | ''>('')
 const personalTokenTestMessage = ref('')
 const personalCollapsed = ref(false)
 const accountDetailsExpanded = ref(false)
+const rankingMode = ref<'tokens' | 'cost'>('tokens')
 const appVersion = ref('0.1.0')
 const updateVersion = ref('')
 const updateBody = ref('')
@@ -372,6 +401,7 @@ const hasPersonal = computed(() => hasPersonalSettings(settings.value))
 const formattedPersonalToday = computed(() => formatTokenCount(personalMetrics.value.todayTokens))
 const formattedFirstToken = computed(() => formatFirstToken(personalMetrics.value.firstTokenMs))
 const formattedAdminToday = computed(() => formatTokenCount(adminMetrics.value.todayTotalTokens))
+const formattedAdminTodayCost = computed(() => formatCost(adminMetrics.value.todayTotalCost))
 const formattedPoolAccounts = computed(() => formatPoolAccountCount(adminMetrics.value.poolAccounts))
 const formattedPoolCapacity = computed(() => formatPoolCapacity(adminMetrics.value.poolCapacity))
 const formattedPoolRemaining = computed(() => {
@@ -380,6 +410,7 @@ const formattedPoolRemaining = computed(() => {
 })
 const formattedPoolLatestReset = computed(() => formatResetRemain(adminMetrics.value.poolLatestResetAt))
 const formattedPoolResetItems = computed(() => adminMetrics.value.poolResetItems.map(formatPoolResetItem))
+const displayedUserRanking = computed(() => sortUserRanking(adminMetrics.value.userRanking, rankingMode.value))
 const poolProgressWidth = computed(() => {
   const value = adminMetrics.value.poolRemainingPercent
   if (value === null || Number.isNaN(value)) return '0%'
@@ -404,19 +435,13 @@ const poolFillStyle = computed(() => {
     '--fill-color': colorMap[poolStatusClass.value]
   }
 })
-const platformShellStyle = computed(() => {
-  const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
-  const accountDetailsRows = accountDetailsExpanded.value ? Math.min(adminMetrics.value.poolAccountDetails.length, 6) : 0
-  const accountDetailsHeight = accountDetailsExpanded.value ? 60 + accountDetailsRows * 66 : 48
-  const height = Math.max(348, 238 + rankingRows * 30 + accountDetailsHeight)
-  return { height: `${height}px` }
-})
 const platformWindowHeight = computed(() => {
   const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
   const accountDetailsRows = accountDetailsExpanded.value ? Math.min(adminMetrics.value.poolAccountDetails.length, 6) : 0
   const accountDetailsHeight = accountDetailsExpanded.value ? 60 + accountDetailsRows * 66 : 48
-  return Math.max(348, 238 + rankingRows * 30 + accountDetailsHeight)
+  return Math.max(363, 253 + rankingRows * 42 + accountDetailsHeight)
 })
+const platformShellStyle = computed(() => ({ height: `${platformWindowHeight.value}px` }))
 const statusClass = computed(() => {
   if (!hasAdmin.value && !hasPersonal.value) return 'idle'
   return errorMessage.value ? 'error' : 'online'
@@ -510,6 +535,19 @@ function formatCompactNumber(value: number): string {
   return text.endsWith('.0') ? text.slice(0, -2) : text
 }
 
+function sortUserRanking(items: UserTodayUsageRankItem[], mode: 'tokens' | 'cost'): UserTodayUsageRankItem[] {
+  return [...items].sort((left, right) => {
+    if (mode === 'cost') {
+      const costDiff = (right.actualCost ?? 0) - (left.actualCost ?? 0)
+      if (costDiff !== 0) return costDiff
+    }
+
+    const tokenDiff = right.tokens - left.tokens
+    if (tokenDiff !== 0) return tokenDiff
+    return (left.userId ?? 0) - (right.userId ?? 0)
+  })
+}
+
 function formatAccountWindowText(item: PoolAccountUsageWindow): string {
   const remaining = Math.round(item.remainingPercent)
   const resetRemain = formatUsageWindowRemain(item.resetAt)
@@ -572,11 +610,13 @@ async function checkForAppUpdate() {
     const { check } = await import('@tauri-apps/plugin-updater')
     const update = await check()
     if (!update) {
+      await syncTrayUpdateStatus(false)
       updateState.value = 'latest'
       updateMessage.value = '当前已经是最新版本。'
       return
     }
 
+    await syncTrayUpdateStatus(true)
     availableUpdate = update
     updateVersion.value = update.version
     updateBody.value = update.body || '暂无更新说明。'
@@ -585,6 +625,16 @@ async function checkForAppUpdate() {
   } catch (error) {
     updateState.value = 'error'
     updateMessage.value = error instanceof Error ? error.message : '检查更新失败'
+  }
+}
+
+async function syncTrayUpdateStatus(available: boolean) {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { emit } = await import('@tauri-apps/api/event')
+    await emit('token-orb-update-status', { available })
+  } catch {
+    // 托盘菜单状态同步失败不影响更新窗口本身。
   }
 }
 

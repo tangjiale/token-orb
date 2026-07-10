@@ -7,6 +7,7 @@ import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiC
 vi.mock('@/domain/sub2apiClient', () => ({
   fetchAdminMonitorMetrics: vi.fn(async () => ({
     todayTotalTokens: null,
+    todayTotalCost: null,
     poolRemainingPercent: null,
     poolLatestResetAt: null,
     poolResetItems: [],
@@ -128,6 +129,7 @@ describe('App settings sync', () => {
     vi.setSystemTime(new Date('2026-03-16T09:00:00.000Z'))
     vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
       todayTotalTokens: 52220000,
+      todayTotalCost: 32.481,
       poolRemainingPercent: 91,
       poolLatestResetAt: '2026-03-16T12:37:00.000Z',
       poolResetItems: [],
@@ -158,7 +160,8 @@ describe('App settings sync', () => {
           name: '由磊',
           email: '707200583@163.com',
           displayName: '由磊（707200583@163.com）',
-          tokens: 52220000
+          tokens: 52220000,
+          actualCost: 13.08
         }
       ],
       updatedAt: '2026-03-16T09:00:00.000Z'
@@ -173,6 +176,8 @@ describe('App settings sync', () => {
     expect(wrapper.text()).toContain('账号：5/1/1/7')
     expect(wrapper.text()).toContain('容量：0 / 50')
     expect(wrapper.text()).toContain('由磊（707200583@163.com）')
+    expect(wrapper.get('.monitor-card .token-cost').text()).toBe('$32.48')
+    expect(wrapper.get('.ranking-value .token-cost').text()).toBe('$13.08')
     expect(wrapper.text()).not.toContain('调度中')
     expect(wrapper.text()).not.toContain('剩余 91%')
 
@@ -191,5 +196,57 @@ describe('App settings sync', () => {
 
     expect(wrapper.text()).not.toContain('调度中')
     expect(wrapper.text()).not.toContain('5h剩余 91%')
+  })
+
+  it('switches the ranking between token usage and actual cost', async () => {
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: 15000000,
+      todayTotalCost: 3.5,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: null,
+      poolCapacity: null,
+      poolAccountDetails: [],
+      userRanking: [
+        {
+          rank: 1,
+          userId: 1,
+          name: '高用量',
+          email: 'usage@example.com',
+          displayName: '高用量（usage@example.com）',
+          tokens: 12000000,
+          actualCost: 1.2
+        },
+        {
+          rank: 2,
+          userId: 2,
+          name: '高消费',
+          email: 'cost@example.com',
+          displayName: '高消费（cost@example.com）',
+          tokens: 3000000,
+          actualCost: 9.9
+        }
+      ],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    const firstRow = () => wrapper.findAll('.ranking-row')[0].text()
+
+    expect(wrapper.get('.ranking-tab.active').text()).toBe('今日用量榜')
+    expect(firstRow()).toContain('高用量')
+    expect(firstRow()).toContain('12.00M')
+    expect(firstRow()).toContain('$1.20')
+
+    await wrapper.findAll('.ranking-tab')[1].trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.ranking-tab.active').text()).toBe('今日消费榜')
+    expect(firstRow()).toContain('高消费')
+    expect(firstRow()).toContain('3.00M')
+    expect(firstRow()).toContain('$9.90')
   })
 })

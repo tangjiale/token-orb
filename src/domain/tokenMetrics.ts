@@ -6,6 +6,7 @@ export interface TokenOrbMetrics {
 
 export interface AdminMonitorMetrics {
   todayTotalTokens: number | null
+  todayTotalCost: number | null
   poolRemainingPercent: number | null
   poolLatestResetAt: string | null
   poolResetItems: PoolResetItem[]
@@ -77,6 +78,7 @@ export interface UserTodayUsageRankItem {
   email: string
   displayName: string
   tokens: number
+  actualCost: number | null
 }
 
 export interface UserIdentityItem {
@@ -118,6 +120,11 @@ export function parseTodayTokens(payload: unknown): number | null {
   return readNumber(record, 'today_tokens')
 }
 
+export function parseTodayActualCost(payload: unknown): number | null {
+  const record = unwrapData(payload)
+  return readNumber(record, 'today_actual_cost')
+}
+
 export function parseLatestFirstTokenMs(payload: unknown): number | null {
   const record = unwrapData(payload)
   const items = Array.isArray(record?.items) ? record.items : []
@@ -143,7 +150,8 @@ export function parseUserRanking(payload: unknown, users: UserIdentityItem[] = [
         name,
         email,
         displayName: email ? `${name}（${email}）` : name,
-        tokens: readFirstNumber(row, ['tokens', 'total_tokens', 'today_tokens']) ?? 0
+        tokens: readFirstNumber(row, ['tokens', 'total_tokens', 'today_tokens']) ?? 0,
+        actualCost: readFirstNumber(row, ['actual_cost', 'user_cost', 'cost'])
       }
     })
     .sort((a, b) => b.tokens - a.tokens)
@@ -327,6 +335,14 @@ export function formatTokenCount(value: number | null): string {
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`
   if (value >= 1_000) return `${(value / 1_000).toFixed(2)}K`
   return value.toFixed(2)
+}
+
+export function formatCost(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '--'
+  if (value >= 1000) return `$${(value / 1000).toFixed(2)}K`
+  if (value >= 1) return `$${value.toFixed(2)}`
+  if (value >= 0.01) return `$${value.toFixed(3)}`
+  return `$${value.toFixed(4)}`
 }
 
 export function formatFirstToken(valueMs: number | null): string {

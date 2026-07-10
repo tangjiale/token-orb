@@ -3,7 +3,8 @@ use std::collections::HashMap;
 use tauri::image::Image;
 use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Listener, LogicalSize, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_updater::UpdaterExt;
 
 mod tray_icon_rgba;
 
@@ -32,15 +33,36 @@ pub fn run() {
                 let _ = window.show();
             }
 
+            let show_monitor_item = MenuItem::with_id(app, "show_monitor", "显示监控面板", true, None::<&str>)?;
+            let settings_item = MenuItem::with_id(app, "open_settings", "设置", true, None::<&str>)?;
+            let check_update_item = MenuItem::with_id(app, "check_update", "检查更新", true, None::<&str>)?;
             let version_item = MenuItem::with_id(app, "version", format!("当前版本 v{}", env!("CARGO_PKG_VERSION")), false, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "退出 Token Orb", true, None::<&str>)?;
             let menu = MenuBuilder::new(app)
-                .text("show_monitor", "显示监控面板")
-                .text("open_settings", "设置")
-                .text("check_update", "检查更新")
+                .item(&show_monitor_item)
+                .item(&settings_item)
+                .item(&check_update_item)
                 .item(&version_item)
                 .separator()
-                .text("quit", "退出 Token Orb")
+                .item(&quit_item)
                 .build()?;
+
+            let event_check_update_item = check_update_item.clone();
+            let event_version_item = version_item.clone();
+            app.listen("token-orb-update-status", move |event| {
+                set_tray_update_status(&event_check_update_item, &event_version_item, read_update_available(event.payload()));
+            });
+
+            let startup_check_update_item = check_update_item.clone();
+            let startup_version_item = version_item.clone();
+            let startup_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Ok(updater) = startup_handle.updater() {
+                    if let Ok(update) = updater.check().await {
+                        set_tray_update_status(&startup_check_update_item, &startup_version_item, update.is_some());
+                    }
+                }
+            });
 
             TrayIconBuilder::with_id("main")
                 .menu(&menu)
@@ -154,6 +176,28 @@ fn read_error_message(value: &serde_json::Value) -> Option<String> {
         }
     }
     None
+}
+
+fn read_update_available(payload: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return false;
+    };
+
+    value
+        .as_bool()
+        .or_else(|| value.get("available").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false)
+}
+
+fn set_tray_update_status<R: Runtime>(check_update_item: &MenuItem<R>, version_item: &MenuItem<R>, available: bool) {
+    if available {
+        let _ = check_update_item.set_text("有版本更新");
+        let _ = version_item.set_text(format!("当前版本 v{} · 有版本更新", env!("CARGO_PKG_VERSION")));
+        return;
+    }
+
+    let _ = check_update_item.set_text("检查更新");
+    let _ = version_item.set_text(format!("当前版本 v{}", env!("CARGO_PKG_VERSION")));
 }
 
 fn toggle_monitor<R: Runtime>(app: &AppHandle<R>, anchor: Option<PhysicalPosition<i32>>) {

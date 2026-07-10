@@ -1,9 +1,10 @@
 {
   "name": "token-orb",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "release": {
     "notes": [
-      "增加显示账号用量详情列表"
+      "增加今日消费监控及用量/消费榜单切换",
+      "托盘菜单可提示可用的新版本"
     ]
   },
   "private": true,

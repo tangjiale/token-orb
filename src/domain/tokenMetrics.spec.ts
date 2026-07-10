@@ -7,6 +7,7 @@ import {
   findExactGroupIdsByNames,
   findLatestPoolResetAt,
   findPoolCapacitySummary,
+  formatCost,
   formatFirstToken,
   formatPoolCapacity,
   formatPoolAccountCount,
@@ -16,6 +17,7 @@ import {
   normalizeBaseUrl,
   parseGroups,
   parseLatestFirstTokenMs,
+  parseTodayActualCost,
   parseTodayTokens,
   parseUserRanking,
   parseUsers
@@ -35,6 +37,12 @@ describe('tokenMetrics', () => {
   it('parses today token count from dashboard stats', () => {
     expect(parseTodayTokens({ today_tokens: 55900000 })).toBe(55900000)
     expect(parseTodayTokens({ data: { today_tokens: 42 } })).toBe(42)
+  })
+
+  it('parses today actual cost from dashboard stats', () => {
+    expect(parseTodayActualCost({ today_actual_cost: 32.481 })).toBe(32.481)
+    expect(parseTodayActualCost({ data: { today_actual_cost: '0.0098' } })).toBe(0.0098)
+    expect(parseTodayActualCost({ today_cost: 12.5 })).toBeNull()
   })
 
   it('parses latest first token from usage list', () => {
@@ -254,6 +262,10 @@ describe('tokenMetrics', () => {
     expect(formatTokenCount(980)).toBe('980.00')
     expect(formatFirstToken(14620)).toBe('14.62s')
     expect(formatFirstToken(null)).toBe('--')
+    expect(formatCost(32.481)).toBe('$32.48')
+    expect(formatCost(0.1284)).toBe('$0.128')
+    expect(formatCost(0.0098)).toBe('$0.0098')
+    expect(formatCost(null)).toBe('--')
     expect(formatPoolCapacity({ groupId: 2, concurrencyUsed: 3, concurrencyMax: 40 })).toBe('3 / 40')
     expect(formatPoolCapacity(null)).toBe('--')
     expect(formatPoolAccountCount({ active: 2, limited: 1, error: 0, total: 4 })).toEqual({
@@ -357,15 +369,15 @@ describe('tokenMetrics', () => {
   })
 
   it('parses user token ranking for admin monitor list', () => {
-    expect(parseUserRanking({ ranking: [{ user_id: 2, email: 'a@test.com', tokens: 1200 }] })).toEqual([
-      { rank: 1, userId: 2, name: '用户', email: 'a@test.com', displayName: '用户（a@test.com）', tokens: 1200 }
+    expect(parseUserRanking({ ranking: [{ user_id: 2, email: 'a@test.com', tokens: 1200, actual_cost: 0.1284 }] })).toEqual([
+      { rank: 1, userId: 2, name: '用户', email: 'a@test.com', displayName: '用户（a@test.com）', tokens: 1200, actualCost: 0.1284 }
     ])
   })
 
   it('uses admin user list username for today usage ranking names', () => {
     const users = parseUsers({ data: [{ id: 2, email: 'a@test.com', username: '阿唐' }] })
     expect(parseUserRanking({ ranking: [{ user_id: 2, email: 'a@test.com', tokens: 1200 }] }, users)).toEqual([
-      { rank: 1, userId: 2, name: '阿唐', email: 'a@test.com', displayName: '阿唐（a@test.com）', tokens: 1200 }
+      { rank: 1, userId: 2, name: '阿唐', email: 'a@test.com', displayName: '阿唐（a@test.com）', tokens: 1200, actualCost: null }
     ])
   })
 
