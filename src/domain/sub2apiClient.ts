@@ -87,6 +87,7 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
 
   const accountItems = groupMatched ? dedupeAccounts(accountsPayloads.flatMap((payload) => readItems(payload))) : []
   const selectedGroupIds = poolGroupIds.length > 0 ? poolGroupIds : null
+  const now = new Date()
   const todayStatsByAccountId = groupMatched
     ? await fetchAccountTodayStats(baseUrl, headers, accountItems, refreshAt)
     : {}
@@ -94,12 +95,15 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   return {
     todayTotalTokens: parseTodayTokens(statsPayload),
     todayTotalCost: parseTodayActualCost(statsPayload),
-    poolRemainingPercent: groupMatched ? calculatePoolRemainingPercent(accountItems, selectedGroupIds) : null,
-    poolLatestResetAt: groupMatched ? findLatestPoolResetAt(accountItems, selectedGroupIds) : null,
-    poolResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds) : [],
+    poolRemainingPercent: groupMatched ? calculatePoolRemainingPercent(accountItems, selectedGroupIds, now, '5h') : null,
+    poolLatestResetAt: groupMatched ? findLatestPoolResetAt(accountItems, selectedGroupIds, now, '5h') : null,
+    poolResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds, now, '5h') : [],
+    poolSevenDayRemainingPercent: groupMatched ? calculatePoolRemainingPercent(accountItems, selectedGroupIds, now, '7d') : null,
+    poolSevenDayLatestResetAt: groupMatched ? findLatestPoolResetAt(accountItems, selectedGroupIds, now, '7d') : null,
+    poolSevenDayResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds, now, '7d') : [],
     poolAccounts: groupMatched ? countPoolAccounts(accountItems, selectedGroupIds) : null,
     poolCapacity: groupMatched ? findPoolCapacitySummary(capacityPayload, selectedGroupIds) : null,
-    poolAccountDetails: groupMatched ? listPoolAccountDetails(accountItems, selectedGroupIds, new Date(), todayStatsByAccountId) : [],
+    poolAccountDetails: groupMatched ? listPoolAccountDetails(accountItems, selectedGroupIds, now, todayStatsByAccountId) : [],
     userRanking: parseUserRanking(rankingPayload, parseUsers(usersPayload)),
     updatedAt: new Date().toISOString()
   }

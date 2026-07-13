@@ -10,6 +10,9 @@ export interface AdminMonitorMetrics {
   poolRemainingPercent: number | null
   poolLatestResetAt: string | null
   poolResetItems: PoolResetItem[]
+  poolSevenDayRemainingPercent?: number | null
+  poolSevenDayLatestResetAt?: string | null
+  poolSevenDayResetItems?: PoolResetItem[]
   poolAccounts: PoolAccountSummary | null
   poolCapacity: PoolCapacitySummary | null
   poolAccountDetails: PoolAccountDetailItem[]
@@ -232,7 +235,12 @@ export function findExactGroupIdsByNames(groups: AdminGroupIdentityItem[], group
   return Array.from(new Set(groupIds))
 }
 
-export function calculatePoolRemainingPercent(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): number | null {
+export function calculatePoolRemainingPercent(
+  accounts: unknown[],
+  groupId: PoolGroupIdSelector = null,
+  now = new Date(),
+  windowType: PoolAccountUsageWindowType = '5h'
+): number | null {
   const wantedGroupIds = normalizeGroupIds(groupId)
   const percents = accounts
     .filter((item) => accountMatchesGroupId(item, wantedGroupIds))
@@ -240,7 +248,7 @@ export function calculatePoolRemainingPercent(accounts: unknown[], groupId: Pool
     .map((item) => {
       if (!isRecord(item)) return null
       const extra = isRecord(item.extra) ? item.extra : item
-      const used = read5hUsedPercent(extra, now)
+      const used = readUsageUsedPercent(extra, windowType, now)
       return used === null ? null : Math.max(0, 100 - used)
     })
     .filter((value): value is number => value !== null)
@@ -267,18 +275,33 @@ export function countPoolAccounts(accounts: unknown[], groupId: PoolGroupIdSelec
     }, { active: 0, limited: 0, error: 0, total: 0 })
 }
 
-export function findLatestPoolResetAt(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): string | null {
-  return findNearestPoolResetAt(accounts, groupId, now)
+export function findLatestPoolResetAt(
+  accounts: unknown[],
+  groupId: PoolGroupIdSelector = null,
+  now = new Date(),
+  windowType: PoolAccountUsageWindowType = '5h'
+): string | null {
+  return findNearestPoolResetAt(accounts, groupId, now, windowType)
 }
 
-export function findNearestPoolResetAt(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): string | null {
-  const resetTimes = listPoolResetItems(accounts, groupId, now).map((item) => Date.parse(item.resetAt))
+export function findNearestPoolResetAt(
+  accounts: unknown[],
+  groupId: PoolGroupIdSelector = null,
+  now = new Date(),
+  windowType: PoolAccountUsageWindowType = '5h'
+): string | null {
+  const resetTimes = listPoolResetItems(accounts, groupId, now, windowType).map((item) => Date.parse(item.resetAt))
 
   if (resetTimes.length === 0) return null
   return new Date(Math.min(...resetTimes)).toISOString()
 }
 
-export function listPoolResetItems(accounts: unknown[], groupId: PoolGroupIdSelector = null, now = new Date()): PoolResetItem[] {
+export function listPoolResetItems(
+  accounts: unknown[],
+  groupId: PoolGroupIdSelector = null,
+  now = new Date(),
+  windowType: PoolAccountUsageWindowType = '5h'
+): PoolResetItem[] {
   const wantedGroupIds = normalizeGroupIds(groupId)
   return accounts
     .filter((item) => accountMatchesGroupId(item, wantedGroupIds))
@@ -286,7 +309,7 @@ export function listPoolResetItems(accounts: unknown[], groupId: PoolGroupIdSele
     .map((item) => {
       if (!isRecord(item)) return null
       const extra = isRecord(item.extra) ? item.extra : item
-      const resetAt = read5hResetAt(extra)
+      const resetAt = readUsageResetAt(extra, windowType)
       if (resetAt === null || resetAt <= now.getTime()) return null
       return {
         status: accountIsLimited(item, now) ? 'limited' : 'normal',
@@ -408,17 +431,6 @@ function readFirstString(record: Record<string, unknown>, keys: string[]): strin
     if (typeof value === 'number' && Number.isFinite(value)) return String(value)
   }
   return ''
-}
-
-function read5hUsedPercent(extra: Record<string, unknown>, now: Date): number | null {
-  const used = readNumber(extra, 'codex_5h_used_percent')
-  if (used === null) return null
-  if (isExpiredUsageWindow(extra, '5h', now)) return 0
-  return Math.min(100, Math.max(0, used))
-}
-
-function read5hResetAt(extra: Record<string, unknown>): number | null {
-  return readUsageResetAt(extra, '5h')
 }
 
 function readUsageUsedPercent(extra: Record<string, unknown>, type: PoolAccountUsageWindowType, now: Date): number | null {

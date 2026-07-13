@@ -116,8 +116,8 @@
     </section>
   </main>
 
-  <main v-else-if="isPlatformView" class="platform-shell" :style="platformShellStyle">
-    <section class="monitor-panel" :style="platformShellStyle" data-tauri-drag-region>
+  <main v-else-if="isPlatformView" class="platform-shell">
+    <section ref="monitorPanelRef" class="monitor-panel" data-tauri-drag-region>
       <div class="section-title">
         <ListChecks :size="16" />
         <span>平台信息</span>
@@ -135,23 +135,45 @@
           <em class="token-cost">{{ formattedAdminTodayCost }}</em>
         </article>
         <article class="monitor-card">
-          <span>5小时号池剩余量</span>
+          <div class="monitor-card__header">
+            <span>{{ selectedPoolWindowLabel }}号池剩余量</span>
+            <div class="pool-window-tabs" role="tablist" aria-label="号池统计周期">
+              <button
+                class="pool-window-tab"
+                :class="{ active: poolWindowType === '7d' }"
+                :aria-selected="poolWindowType === '7d'"
+                data-window="7d"
+                type="button"
+                role="tab"
+                @click="poolWindowType = '7d'"
+              >7d</button>
+              <button
+                class="pool-window-tab"
+                :class="{ active: poolWindowType === '5h' }"
+                :aria-selected="poolWindowType === '5h'"
+                data-window="5h"
+                type="button"
+                role="tab"
+                @click="poolWindowType = '5h'"
+              >5h</button>
+            </div>
+          </div>
           <div class="pool-value-line">
-            <strong :class="poolStatusClass">{{ formattedPoolRemaining }}</strong>
-            <span v-if="formattedPoolLatestReset !== '--'" class="pool-reset-hover">
-              <em>{{ formattedPoolLatestReset }} 后刷新</em>
+            <strong :class="selectedPoolStatusClass">{{ formattedSelectedPoolRemaining }}</strong>
+            <span v-if="formattedSelectedPoolLatestReset !== '--'" class="pool-reset-hover">
+              <em>{{ formattedSelectedPoolLatestReset }} 后刷新</em>
               <span class="pool-reset-popover">
-                <span class="pool-reset-popover__title">刷新时间列表</span>
-                <span v-if="formattedPoolResetItems.length === 0" class="pool-reset-empty">暂无刷新时间</span>
-                <span v-for="(item, index) in formattedPoolResetItems" :key="`${item.resetAt}-${index}`" class="pool-reset-row">
+                <span class="pool-reset-popover__title">{{ selectedPoolWindowLabel }}刷新时间列表</span>
+                <span v-if="formattedSelectedPoolResetItems.length === 0" class="pool-reset-empty">暂无刷新时间</span>
+                <span v-for="(item, index) in formattedSelectedPoolResetItems" :key="`${item.resetAt}-${index}`" class="pool-reset-row">
                   <span class="pool-reset-status" :class="item.statusClass">{{ item.statusText }}</span>
                   <time>{{ item.displayTime }}</time>
                 </span>
               </span>
             </span>
           </div>
-          <div class="pool-progress" :class="poolStatusClass">
-            <i :style="{ width: poolProgressWidth }"></i>
+          <div class="pool-progress" :class="selectedPoolStatusClass">
+            <i :style="{ width: selectedPoolProgressWidth }"></i>
           </div>
         </article>
       </div>
@@ -357,7 +379,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
   ChevronDown,
   ChevronUp,
@@ -378,6 +400,7 @@ import {
   formatTokenCount,
   type AdminMonitorMetrics,
   type PoolAccountUsageWindow,
+  type PoolAccountUsageWindowType,
   type PoolResetItem,
   type TokenOrbMetrics,
   type UserTodayUsageRankItem
@@ -436,8 +459,10 @@ const personalTokenTestState = ref<'success' | 'error' | ''>('')
 const personalTokenTestMessage = ref('')
 const personalCollapsed = ref(false)
 const personalOrbDismissed = ref(false)
-const accountDetailsExpanded = ref(false)
+const accountDetailsExpanded = ref(true)
 const selectedAccountStatus = ref<AccountStatusFilter>(loadAccountStatusFilter())
+const monitorPanelRef = ref<HTMLElement | null>(null)
+const poolWindowType = ref<PoolAccountUsageWindowType>('7d')
 const rankingMode = ref<'tokens' | 'cost'>('tokens')
 const platformUpdateAvailable = ref(false)
 const appVersion = ref('0.1.0')
@@ -470,6 +495,20 @@ const formattedPoolRemaining = computed(() => {
 })
 const formattedPoolLatestReset = computed(() => formatResetRemain(adminMetrics.value.poolLatestResetAt))
 const formattedPoolResetItems = computed(() => adminMetrics.value.poolResetItems.map(formatPoolResetItem))
+const selectedPoolWindowLabel = computed(() => poolWindowType.value === '7d' ? '7日' : '5小时')
+const selectedPoolRemainingPercent = computed(() => poolWindowType.value === '7d'
+  ? adminMetrics.value.poolSevenDayRemainingPercent ?? null
+  : adminMetrics.value.poolRemainingPercent)
+const formattedSelectedPoolRemaining = computed(() => {
+  const value = selectedPoolRemainingPercent.value
+  return value === null ? '--' : `${Math.round(value)}%`
+})
+const formattedSelectedPoolLatestReset = computed(() => formatResetRemain(poolWindowType.value === '7d'
+  ? adminMetrics.value.poolSevenDayLatestResetAt ?? null
+  : adminMetrics.value.poolLatestResetAt))
+const formattedSelectedPoolResetItems = computed(() => (poolWindowType.value === '7d'
+  ? adminMetrics.value.poolSevenDayResetItems ?? []
+  : adminMetrics.value.poolResetItems).map(formatPoolResetItem))
 const displayedUserRanking = computed(() => sortUserRanking(adminMetrics.value.userRanking, rankingMode.value))
 const filteredPoolAccountDetails = computed(() => {
   if (selectedAccountStatus.value === 'all') return adminMetrics.value.poolAccountDetails
@@ -487,6 +526,18 @@ const poolStatusClass = computed(() => {
   if (value < 20) return 'warning'
   return 'healthy'
 })
+const selectedPoolProgressWidth = computed(() => {
+  const value = selectedPoolRemainingPercent.value
+  if (value === null || Number.isNaN(value)) return '0%'
+  return `${Math.min(100, Math.max(0, value))}%`
+})
+const selectedPoolStatusClass = computed(() => {
+  const value = selectedPoolRemainingPercent.value
+  if (value === null || Number.isNaN(value)) return 'unknown'
+  if (value < 10) return 'danger'
+  if (value < 20) return 'warning'
+  return 'healthy'
+})
 const poolFillStyle = computed(() => {
   const colorMap = {
     healthy: '#20e3b2',
@@ -499,13 +550,6 @@ const poolFillStyle = computed(() => {
     '--fill-color': colorMap[poolStatusClass.value]
   }
 })
-const platformWindowHeight = computed(() => {
-  const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
-  const accountDetailsRows = accountDetailsExpanded.value ? Math.min(filteredPoolAccountDetails.value.length, 6) : 0
-  const accountDetailsHeight = accountDetailsExpanded.value ? 84 + accountDetailsRows * 66 : 72
-  return Math.max(363, 253 + rankingRows * 42 + accountDetailsHeight)
-})
-const platformShellStyle = computed(() => ({ height: `${platformWindowHeight.value}px` }))
 const statusClass = computed(() => {
   if (!hasAdmin.value && !hasPersonal.value) return 'idle'
   return errorMessage.value ? 'error' : 'online'
@@ -711,6 +755,20 @@ async function checkPlatformUpdate() {
     platformUpdateAvailable.value = (await check()) !== null
   } catch {
     platformUpdateAvailable.value = false
+  }
+}
+
+async function resizePlatformWindowToContent() {
+  if (!isPlatformView) return
+  await nextTick()
+  const height = monitorPanelRef.value?.scrollHeight
+  if (!height) return
+  try {
+    const api = await loadTauriWindowApi()
+    if (!api) return
+    await api.getCurrentWindow().setSize(new api.LogicalSize(410, height))
+  } catch {
+    return
   }
 }
 
@@ -1062,8 +1120,10 @@ function formatResetRemain(value: string | null): string {
   const remainingMs = resetAt - Date.now()
   if (remainingMs <= 0) return '0m'
   const totalMinutes = Math.ceil(remainingMs / 60000)
-  const hours = Math.floor(totalMinutes / 60)
+  const days = Math.floor(totalMinutes / (24 * 60))
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60)
   const minutes = totalMinutes % 60
+  if (days > 0) return `${days}d ${hours}h ${minutes}m`
   if (hours <= 0) return `${minutes}m`
   return `${hours}h ${minutes}m`
 }
@@ -1097,14 +1157,12 @@ onMounted(() => {
   void refreshAll()
   void checkPlatformUpdate()
   void initFloatingWindow()
+  void resizePlatformWindowToContent()
 })
 
-watch(platformWindowHeight, async (height) => {
-  if (!isPlatformView) return
-  const api = await loadTauriWindowApi()
-  if (!api) return
-  await api.getCurrentWindow().setSize(new api.LogicalSize(410, height))
-}, { immediate: true })
+watch([accountDetailsExpanded, selectedAccountStatus, adminMetrics], () => {
+  void resizePlatformWindowToContent()
+})
 
 onBeforeUnmount(() => {
   window.removeEventListener('storage', syncExternalSettingsChange)

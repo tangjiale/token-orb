@@ -157,10 +157,72 @@ describe('App settings sync', () => {
   it('uses a 410px platform window to keep the account summary on one line', async () => {
     Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
     localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
-    mount(App)
+    const wrapper = mount(App)
+    Object.defineProperty(wrapper.get('.monitor-panel').element, 'scrollHeight', { configurable: true, value: 242 })
     await flushPromises()
 
-    expect(tauriWindow.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 410 }))
+    expect(tauriWindow.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 410, height: 242 }))
+  })
+
+  it('shows the 7d pool by default and switches to the 5h pool', async () => {
+    vi.setSystemTime(new Date('2026-03-16T09:00:00Z'))
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: null,
+      todayTotalCost: null,
+      poolRemainingPercent: 91,
+      poolLatestResetAt: '2026-03-16T12:37:00.000Z',
+      poolResetItems: [],
+      poolAccounts: null,
+      poolCapacity: null,
+      poolAccountDetails: [],
+      userRanking: [],
+      updatedAt: '2026-03-16T09:00:00.000Z',
+      poolSevenDayRemainingPercent: 73,
+      poolSevenDayLatestResetAt: '2026-03-23T05:02:00.000Z',
+      poolSevenDayResetItems: []
+    } as Awaited<ReturnType<typeof fetchAdminMonitorMetrics>>)
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('7日号池剩余量')
+    expect(wrapper.text()).toContain('73%')
+    expect(wrapper.text()).toContain('6d 20h 2m 后刷新')
+    expect(wrapper.get('button.pool-window-tab[data-window="7d"]').text()).toBe('7d')
+    expect(wrapper.get('button.pool-window-tab[data-window="5h"]').text()).toBe('5h')
+
+    await wrapper.get('button.pool-window-tab[data-window="5h"]').trigger('click')
+
+    expect(wrapper.text()).toContain('5小时号池剩余量')
+    expect(wrapper.text()).toContain('91%')
+  })
+
+  it('resizes the platform window to the rendered account panel height after expanding details', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: null,
+      todayTotalCost: null,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: { active: 1, limited: 0, error: 0, total: 1 },
+      poolCapacity: null,
+      poolAccountDetails: [
+        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] }
+      ],
+      userRanking: [],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+    Object.defineProperty(wrapper.get('.monitor-panel').element, 'scrollHeight', { configurable: true, value: 278 })
+    tauriWindow.setSize.mockClear()
+
+    await wrapper.get('button.account-details-toggle').trigger('click')
+    await flushPromises()
+
+    expect(tauriWindow.setSize).toHaveBeenLastCalledWith(expect.objectContaining({ width: 410, height: 278 }))
   })
 
   it('shows a saved confirmation after saving settings', async () => {
@@ -325,7 +387,7 @@ describe('App settings sync', () => {
     expect(hidePersonalFloatingOrb).toHaveBeenCalledOnce()
   })
 
-  it('keeps usage ranking visible and toggles group account details', async () => {
+  it('shows group account details by default and allows collapsing them', async () => {
     vi.setSystemTime(new Date('2026-03-16T09:00:00.000Z'))
     vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
       todayTotalTokens: 52220000,
@@ -377,14 +439,9 @@ describe('App settings sync', () => {
     expect(wrapper.text()).toContain('账号：5/1/1/7')
     expect(wrapper.text()).toContain('容量：0 / 50')
     expect(wrapper.text()).toContain('由磊（707200583@163.com）')
+    expect(wrapper.get('button.account-details-toggle').attributes('aria-expanded')).toBe('true')
     expect(wrapper.get('.monitor-card .token-cost').text()).toBe('$32.48')
     expect(wrapper.get('.ranking-value .token-cost').text()).toBe('$13.08')
-    expect(wrapper.text()).not.toContain('调度中')
-    expect(wrapper.text()).not.toContain('剩余 91%')
-
-    await wrapper.get('button.account-details-toggle').trigger('click')
-    await flushPromises()
-
     expect(wrapper.text()).toContain('调度中')
     expect(wrapper.text()).toContain('0 / 10')
     expect(wrapper.text()).toContain('请求 159')
@@ -397,6 +454,12 @@ describe('App settings sync', () => {
 
     expect(wrapper.text()).not.toContain('调度中')
     expect(wrapper.text()).not.toContain('5h剩余 91%')
+
+    await wrapper.get('button.account-details-toggle').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('调度中')
+    expect(wrapper.text()).toContain('5h剩余 91% · 3h 37m')
   })
 
   it('filters group account details from status values and only toggles them from the arrow', async () => {
@@ -423,12 +486,8 @@ describe('App settings sync', () => {
 
     await wrapper.get('button.account-filter.limited').trigger('click')
 
-    expect(wrapper.text()).not.toContain('限流账号')
     expect(wrapper.get('button.account-filter.limited').attributes('aria-pressed')).toBe('true')
     expect(localStorage.getItem('token-orb-account-filter-v1')).toBe('limited')
-
-    await wrapper.get('button.account-details-toggle').trigger('click')
-
     expect(wrapper.text()).toContain('限流账号')
     expect(wrapper.text()).not.toContain('正常账号')
     expect(wrapper.text()).not.toContain('错误账号')
@@ -463,14 +522,12 @@ describe('App settings sync', () => {
     const wrapper = mount(App)
     await flushPromises()
 
-    await wrapper.get('button.account-details-toggle').trigger('click')
-
     expect(wrapper.get('button.account-filter.limited').attributes('aria-pressed')).toBe('true')
     expect(wrapper.text()).toContain('限流账号')
     expect(wrapper.text()).not.toContain('正常账号')
   })
 
-  it('filters normal and errored account details without expanding them', async () => {
+  it('filters normal and errored account details while expanded by default', async () => {
     vi.mocked(fetchAdminMonitorMetrics).mockResolvedValue({
       todayTotalTokens: 52220000,
       todayTotalCost: 32.481,
@@ -530,12 +587,9 @@ describe('App settings sync', () => {
     await wrapper.get('button.account-status-filter[data-status="normal"]').trigger('click')
     await flushPromises()
 
-    expect(wrapper.find('.account-details-list').exists()).toBe(false)
+    expect(wrapper.find('.account-details-list').exists()).toBe(true)
     expect(wrapper.get('button.account-status-filter[data-status="normal"]').attributes('aria-pressed')).toBe('true')
     expect(localStorage.getItem('token-orb-account-filter-v1')).toBe('normal')
-
-    await wrapper.get('button.account-details-toggle').trigger('click')
-    await flushPromises()
 
     expect(wrapper.text()).toContain('正常账号')
     expect(wrapper.text()).not.toContain('限流账号')

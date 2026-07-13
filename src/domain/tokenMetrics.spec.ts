@@ -436,6 +436,36 @@ describe('tokenMetrics', () => {
     expect(calculatePoolRemainingPercent(accounts, poolGroupId)).toBeCloseTo(73, 2)
   })
 
+  it('calculates 7d pool remaining from the 7d usage window', () => {
+    const accounts = [
+      {
+        group_id: 1,
+        status: 'active',
+        extra: {
+          codex_5h_used_percent: 10,
+          codex_7d_used_percent: 30,
+          codex_7d_reset_at: '2026-03-23T09:00:00Z'
+        }
+      },
+      {
+        group_id: 1,
+        status: 'limited',
+        extra: {
+          codex_5h_used_percent: 80,
+          codex_7d_used_percent: 50,
+          codex_7d_reset_at: '2026-03-23T09:00:00Z'
+        }
+      },
+      {
+        group_id: 1,
+        status: 'error',
+        extra: { codex_7d_used_percent: 0 }
+      }
+    ]
+
+    expect(calculatePoolRemainingPercent(accounts, 1, new Date('2026-03-16T09:00:00Z'), '7d')).toBe(60)
+  })
+
   it('treats expired 5h usage windows as fully remaining', () => {
     const accounts = [
       {
