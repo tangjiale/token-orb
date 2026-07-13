@@ -4,6 +4,69 @@ import App from './App.vue'
 import { settingsStorageKey, type AppSettings } from '@/domain/settings'
 import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 
+const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, hidePersonalFloatingOrb, listenTauriEvent, resetSettingsUpdatedListener, tauriWindow } = vi.hoisted(() => {
+  let settingsUpdatedListener: (() => void) | undefined
+  const checkForAvailableUpdate = vi.fn(async () => ({
+    body: '修复平台更新提示',
+    version: '0.4.2'
+  }))
+  const hidePersonalFloatingOrb = vi.fn()
+  const emitTauriEvent = vi.fn(async () => undefined)
+  const listenTauriEvent = vi.fn(async (eventName: string, listener: () => void) => {
+    if (eventName === 'token-orb-settings-updated') {
+      settingsUpdatedListener = listener
+    }
+    return vi.fn()
+  })
+  const tauriWindow = {
+    hide: hidePersonalFloatingOrb,
+    onMoved: vi.fn(async () => vi.fn()),
+    outerPosition: vi.fn(async () => ({ x: 0, y: 0 })),
+    scaleFactor: vi.fn(async () => 1),
+    show: vi.fn(async () => undefined),
+    setPosition: vi.fn(async () => undefined),
+    setShadow: vi.fn(async () => undefined),
+    setSize: vi.fn(async () => undefined)
+  }
+
+  return {
+    checkForAvailableUpdate,
+    emitTauriEvent,
+    getSettingsUpdatedListener: () => settingsUpdatedListener,
+    hidePersonalFloatingOrb,
+    listenTauriEvent,
+    resetSettingsUpdatedListener: () => {
+      settingsUpdatedListener = undefined
+    },
+    tauriWindow
+  }
+})
+
+const localStorageMock = (() => {
+  const values = new Map<string, string>()
+
+  return {
+    get length() {
+      return values.size
+    },
+    clear() {
+      values.clear()
+    },
+    getItem(key: string) {
+      return values.get(key) ?? null
+    },
+    key(index: number) {
+      return Array.from(values.keys())[index] ?? null
+    },
+    removeItem(key: string) {
+      values.delete(key)
+    },
+    setItem(key: string, value: string) {
+      values.set(key, String(value))
+    }
+  } satisfies Storage
+})()
+
 vi.mock('@/domain/sub2apiClient', () => ({
   fetchAdminMonitorMetrics: vi.fn(async () => ({
     todayTotalTokens: null,
@@ -24,9 +87,28 @@ vi.mock('@/domain/sub2apiClient', () => ({
   }))
 }))
 
+vi.mock('@tauri-apps/api/window', () => ({
+  LogicalSize: class {
+    constructor(public width: number, public height: number) {}
+  },
+  PhysicalPosition: class {},
+  currentMonitor: vi.fn(async () => null),
+  getCurrentWindow: vi.fn(() => tauriWindow)
+}))
+
+vi.mock('@tauri-apps/api/event', () => ({
+  emit: emitTauriEvent,
+  listen: listenTauriEvent
+}))
+
+vi.mock('@tauri-apps/plugin-updater', () => ({
+  check: checkForAvailableUpdate
+}))
+
 const baseSettings: AppSettings = {
   sub2apiBaseUrl: 'http://127.0.0.1:8081',
   adminApiKey: 'admin-key',
+  personalFloatingEnabled: true,
   personalToken: '',
   poolGroupName: '旧分组',
   poolGroupNames: ['旧分组'],
@@ -37,7 +119,11 @@ describe('App settings sync', () => {
   beforeEach(() => {
     vi.useFakeTimers()
     vi.clearAllMocks()
+    resetSettingsUpdatedListener()
+    vi.stubGlobal('localStorage', localStorageMock)
+    Object.defineProperty(window, 'localStorage', { configurable: true, value: localStorageMock })
     localStorage.clear()
+    delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
     window.history.replaceState({}, '', '/?view=platform')
   })
 
@@ -68,6 +154,15 @@ describe('App settings sync', () => {
     }))
   })
 
+  it('uses a 410px platform window to keep the account summary on one line', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    mount(App)
+    await flushPromises()
+
+    expect(tauriWindow.setSize).toHaveBeenCalledWith(expect.objectContaining({ width: 410 }))
+  })
+
   it('shows a saved confirmation after saving settings', async () => {
     window.history.replaceState({}, '', '/?view=settings')
     localStorage.setItem(settingsStorageKey, JSON.stringify({
@@ -84,6 +179,65 @@ describe('App settings sync', () => {
     expect(wrapper.text()).not.toContain('请求失败')
     expect(fetchAdminMonitorMetrics).toHaveBeenCalled()
     expect(fetchSub2apiMetrics).toHaveBeenCalled()
+  })
+
+  it('emits the settings update event after saving configuration in Tauri', async () => {
+    window.history.replaceState({}, '', '/?view=settings')
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+
+    await wrapper.get('button.primary-button').trigger('click')
+    await flushPromises()
+
+    expect(emitTauriEvent).toHaveBeenCalledWith('token-orb-settings-updated')
+  })
+
+  it('shows the personal floating window after receiving updated settings from Tauri', async () => {
+    window.history.replaceState({}, '', '/?view=personal')
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...baseSettings,
+      personalFloatingEnabled: false
+    }))
+    mount(App)
+    await flushPromises()
+    vi.clearAllMocks()
+
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...baseSettings,
+      personalFloatingEnabled: true
+    }))
+    const settingsUpdatedListener = getSettingsUpdatedListener()
+
+    expect(settingsUpdatedListener).toEqual(expect.any(Function))
+    if (!settingsUpdatedListener) return
+
+    settingsUpdatedListener()
+    await flushPromises()
+
+    expect(tauriWindow.show).toHaveBeenCalledOnce()
+  })
+
+  it('shows a version update button beside the platform title when a new version is available', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    expect(wrapper.get('.monitor-panel > .section-title button').text()).toBe('有版本更新')
+  })
+
+  it('emits the native update event after clicking the platform version update button', async () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('.monitor-panel > .section-title button').trigger('click')
+    await flushPromises()
+
+    expect(emitTauriEvent).toHaveBeenCalledWith('token-orb-open-update')
   })
 
   it('tests personal JWT independently from admin API settings', async () => {
@@ -123,6 +277,52 @@ describe('App settings sync', () => {
 
     expect(wrapper.text()).toContain('认证失败，Token 错误或已失效（HTTP 401）')
     expect(wrapper.text()).not.toContain('个人 JWT 测试失败')
+  })
+
+  it('defaults the personal floating orb to disabled and hides its JWT field', async () => {
+    window.history.replaceState({}, '', '/?view=settings')
+    const { personalFloatingEnabled: _personalFloatingEnabled, ...legacySettings } = baseSettings
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...legacySettings,
+      personalToken: 'personal-jwt'
+    }))
+    const wrapper = mount(App)
+
+    const floatingToggle = wrapper.find('input[name="personal-floating-enabled"]')
+
+    expect(floatingToggle.exists()).toBe(true)
+    expect((floatingToggle.element as HTMLInputElement).checked).toBe(false)
+    expect(wrapper.find('input[placeholder="用于悬浮球个人数据"]').exists()).toBe(false)
+  })
+
+  it('shows the personal JWT field after enabling the personal floating orb', async () => {
+    window.history.replaceState({}, '', '/?view=settings')
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...baseSettings,
+      personalFloatingEnabled: false,
+      personalToken: 'personal-jwt'
+    }))
+    const wrapper = mount(App)
+
+    await wrapper.get('input[name="personal-floating-enabled"]').setValue(true)
+
+    expect(wrapper.find('input[placeholder="用于悬浮球个人数据"]').exists()).toBe(true)
+  })
+
+  it('closes the personal floating orb through the Tauri window hide API', async () => {
+    window.history.replaceState({}, '', '/?view=personal')
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(settingsStorageKey, JSON.stringify({
+      ...baseSettings,
+      personalFloatingEnabled: true
+    }))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button[title="关闭个人悬浮球"]').trigger('click')
+    await flushPromises()
+
+    expect(hidePersonalFloatingOrb).toHaveBeenCalledOnce()
   })
 
   it('keeps usage ranking visible and toggles group account details', async () => {
@@ -171,6 +371,7 @@ describe('App settings sync', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('今日用量榜')
+    expect(wrapper.get('.ranking-box .section-title').text()).toContain('排行榜')
     expect(wrapper.text()).toContain('账号信息')
     expect(wrapper.text()).not.toContain('分组账号详情')
     expect(wrapper.text()).toContain('账号：5/1/1/7')
@@ -196,6 +397,156 @@ describe('App settings sync', () => {
 
     expect(wrapper.text()).not.toContain('调度中')
     expect(wrapper.text()).not.toContain('5h剩余 91%')
+  })
+
+  it('filters group account details from status values and only toggles them from the arrow', async () => {
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: null,
+      todayTotalCost: null,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: { active: 1, limited: 1, error: 1, total: 4 },
+      poolCapacity: null,
+      poolAccountDetails: [
+        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] },
+        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流', schedulable: false, scheduleText: '限流中', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] },
+        { rank: 3, name: '错误账号', status: 'error', statusText: '错误', schedulable: false, scheduleText: '不可调度', capacityText: '2 / 10', capacityUsed: 2, todayRequests: 3, todayTokens: 3, usageWindows: [] },
+        { rank: 4, name: '停用账号', status: 'disabled', statusText: '停用', schedulable: false, scheduleText: '已停用', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 4, todayTokens: 4, usageWindows: [] }
+      ],
+      userRanking: [],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button.account-filter.limited').trigger('click')
+
+    expect(wrapper.text()).not.toContain('限流账号')
+    expect(wrapper.get('button.account-filter.limited').attributes('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('token-orb-account-filter-v1')).toBe('limited')
+
+    await wrapper.get('button.account-details-toggle').trigger('click')
+
+    expect(wrapper.text()).toContain('限流账号')
+    expect(wrapper.text()).not.toContain('正常账号')
+    expect(wrapper.text()).not.toContain('错误账号')
+    expect(wrapper.text()).not.toContain('停用账号')
+
+    await wrapper.get('button.account-filter.total').trigger('click')
+
+    expect(wrapper.text()).toContain('正常账号')
+    expect(wrapper.text()).toContain('限流账号')
+    expect(wrapper.text()).toContain('错误账号')
+    expect(wrapper.text()).toContain('停用账号')
+  })
+
+  it('restores the persisted account status filter after reopening the platform window', async () => {
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: null,
+      todayTotalCost: null,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: { active: 1, limited: 1, error: 0, total: 2 },
+      poolCapacity: null,
+      poolAccountDetails: [
+        { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] },
+        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流', schedulable: false, scheduleText: '限流中', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] }
+      ],
+      userRanking: [],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    localStorage.setItem('token-orb-account-filter-v1', 'limited')
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button.account-details-toggle').trigger('click')
+
+    expect(wrapper.get('button.account-filter.limited').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.text()).toContain('限流账号')
+    expect(wrapper.text()).not.toContain('正常账号')
+  })
+
+  it('filters normal and errored account details without expanding them', async () => {
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValue({
+      todayTotalTokens: 52220000,
+      todayTotalCost: 32.481,
+      poolRemainingPercent: 91,
+      poolLatestResetAt: '2026-03-16T12:37:00.000Z',
+      poolResetItems: [],
+      poolAccounts: { active: 1, limited: 1, error: 1, total: 3 },
+      poolCapacity: { groupId: null, concurrencyUsed: 0, concurrencyMax: 50 },
+      poolAccountDetails: [
+        {
+          rank: 1,
+          name: '正常账号',
+          status: 'normal',
+          statusText: '正常',
+          schedulable: true,
+          scheduleText: '调度中',
+          capacityText: '0 / 10',
+          capacityUsed: 0,
+          todayRequests: 159,
+          todayTokens: 52220000,
+          usageWindows: []
+        },
+        {
+          rank: 2,
+          name: '限流账号',
+          status: 'limited',
+          statusText: '限流中',
+          schedulable: false,
+          scheduleText: '限流中',
+          capacityText: '0 / 10',
+          capacityUsed: 0,
+          todayRequests: 0,
+          todayTokens: 0,
+          usageWindows: []
+        },
+        {
+          rank: 3,
+          name: '错误账号',
+          status: 'error',
+          statusText: '错误',
+          schedulable: false,
+          scheduleText: '不可调度',
+          capacityText: '0 / 10',
+          capacityUsed: 0,
+          todayRequests: 0,
+          todayTokens: 0,
+          usageWindows: []
+        }
+      ],
+      userRanking: [],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button.account-status-filter[data-status="normal"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.account-details-list').exists()).toBe(false)
+    expect(wrapper.get('button.account-status-filter[data-status="normal"]').attributes('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('token-orb-account-filter-v1')).toBe('normal')
+
+    await wrapper.get('button.account-details-toggle').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('正常账号')
+    expect(wrapper.text()).not.toContain('限流账号')
+    expect(wrapper.text()).not.toContain('错误账号')
+
+    await wrapper.get('button.account-status-filter[data-status="error"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('button.account-status-filter[data-status="error"]').attributes('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('token-orb-account-filter-v1')).toBe('error')
+    expect(wrapper.text()).toContain('错误账号')
+    expect(wrapper.text()).not.toContain('正常账号')
   })
 
   it('switches the ranking between token usage and actual cost', async () => {

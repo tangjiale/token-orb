@@ -78,7 +78,7 @@ input {
 }
 
 .platform-shell {
-  width: 370px;
+  width: 410px;
   min-height: 300px;
   overflow: hidden;
   background: #0f172a;
@@ -267,7 +267,7 @@ input {
 }
 
 .monitor-panel {
-  width: 370px;
+  width: 410px;
   min-height: 300px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 18px;
@@ -484,6 +484,27 @@ input {
   font-weight: 600;
 }
 
+.platform-update-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(251, 191, 36, 0.82);
+  border-radius: 999px;
+  color: #fef3c7;
+  background: rgba(120, 53, 15, 0.72);
+  box-shadow: 0 0 16px rgba(245, 158, 11, 0.24);
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.platform-update-button:hover {
+  border-color: #fcd34d;
+  color: #fff;
+  background: rgba(180, 83, 9, 0.78);
+}
+
 .ranking-tabs {
   display: inline-flex;
   gap: 4px;
@@ -492,6 +513,13 @@ input {
   border-radius: 8px;
   padding: 2px;
   background: rgba(2, 6, 23, 0.34);
+}
+
+.ranking-title-label {
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 850;
+  white-space: nowrap;
 }
 
 .ranking-tab {
@@ -556,24 +584,44 @@ input {
   gap: 2px;
 }
 
-.account-badge .account-count {
+.account-filter {
+  min-width: 16px;
+  border: 0;
+  border-radius: 5px;
+  color: inherit;
+  background: transparent;
+  padding: 1px 2px;
+  font: inherit;
   font-weight: 900;
+  line-height: 16px;
+  cursor: pointer;
+  transition: background 160ms ease, box-shadow 160ms ease, font-size 160ms ease, transform 160ms ease;
 }
 
-.account-badge .account-count.normal {
+.account-filter.normal {
   color: #20e3b2;
 }
 
-.account-badge .account-count.limited {
+.account-filter.limited {
   color: #fbbf24;
 }
 
-.account-badge .account-count.error {
+.account-filter.error {
   color: #fb7185;
 }
 
-.account-badge .account-count.total {
+.account-filter.total {
   color: #93c5fd;
+}
+
+.account-filter[aria-pressed="true"] {
+  padding: 1px 5px;
+  background: rgba(15, 23, 42, 0.92);
+  box-shadow: inset 0 0 0 1px currentColor, 0 0 12px color-mix(in srgb, currentColor 38%, transparent);
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 18px;
+  transform: translateY(-1px);
 }
 
 .account-badge .account-separator {
@@ -654,32 +702,51 @@ input {
   padding-top: 12px;
 }
 
-.account-details-toggle {
+.account-details-header {
   display: flex;
   width: 100%;
   min-width: 0;
   align-items: center;
   gap: 8px;
+}
+
+.account-details-toggle {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  place-items: center;
   border: 0;
+  border-radius: 8px;
   color: #e2e8f0;
-  background: transparent;
+  background: rgba(30, 41, 59, 0.62);
   padding: 0;
   cursor: pointer;
+}
+
+.account-details-toggle:hover {
+  background: rgba(51, 65, 85, 0.84);
+}
+
+.account-details-toggle:focus-visible,
+.account-filter:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 .account-details-title {
   display: inline-flex;
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
   color: #e2e8f0;
   font-weight: 800;
   text-align: left;
+  white-space: nowrap;
 }
 
 .account-details-chevron {
-  flex: 0 0 auto;
   color: #94a3b8;
 }
 
@@ -964,6 +1031,61 @@ input {
   gap: 6px;
 }
 
+.switch-field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.switch-control {
+  position: relative;
+  display: inline-flex;
+  width: 42px;
+  height: 24px;
+}
+
+.switch-control input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.switch-control i {
+  width: 100%;
+  height: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 999px;
+  background: rgba(71, 85, 105, 0.45);
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.switch-control i::after {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  content: '';
+  transition: transform 160ms ease, background 160ms ease;
+}
+
+.switch-control input:checked + i {
+  border-color: rgba(45, 212, 191, 0.56);
+  background: rgba(13, 148, 136, 0.68);
+}
+
+.switch-control input:checked + i::after {
+  transform: translateX(18px);
+  background: #f0fdfa;
+}
+
+.switch-control input:focus-visible + i {
+  box-shadow: 0 0 0 3px rgba(32, 227, 178, 0.16);
+}
+
 .field input {
   width: 100%;
   height: 38px;
@@ -1130,11 +1252,18 @@ input {
   line-height: 1.5;
 }
 
-.update-status.available,
 .update-status.installed,
 .update-status.latest {
   border-color: rgba(32, 227, 178, 0.28);
   color: #ccfbf1;
+}
+
+.update-status.available {
+  border-color: rgba(251, 191, 36, 0.72);
+  color: #fef3c7;
+  background: rgba(120, 53, 15, 0.28);
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.14);
+  font-weight: 700;
 }
 
 .update-status.error {

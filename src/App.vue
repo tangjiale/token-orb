@@ -16,7 +16,15 @@
         <input v-model="draft.adminApiKey" type="password" placeholder="用于读取系统监控数据" />
       </label>
 
-      <label class="field personal-token-field">
+      <label class="field switch-field">
+        <span>悬浮球</span>
+        <span class="switch-control">
+          <input v-model="draft.personalFloatingEnabled" name="personal-floating-enabled" type="checkbox" />
+          <i></i>
+        </span>
+      </label>
+
+      <label v-if="draft.personalFloatingEnabled" class="field personal-token-field">
         <span class="field-heading">
           <span>个人 JWT / Bearer Token（可选）</span>
           <button class="secondary-mini-button" type="button" :disabled="personalTokenTesting" @click.prevent.stop="testPersonalToken">
@@ -113,6 +121,10 @@
       <div class="section-title">
         <ListChecks :size="16" />
         <span>平台信息</span>
+        <button v-if="platformUpdateAvailable" class="platform-update-button" type="button" @click.stop="openUpdateWindow">
+          <RefreshCw :size="12" />
+          <span>有版本更新</span>
+        </button>
         <time>{{ platformUpdatedText }}</time>
       </div>
 
@@ -147,6 +159,7 @@
       <div v-if="hasAdmin" class="ranking-box">
         <div class="section-title">
           <Users :size="16" />
+          <span class="ranking-title-label">排行榜</span>
           <div class="ranking-tabs" role="tablist" aria-label="今日榜单切换">
             <button
               class="ranking-tab"
@@ -182,7 +195,7 @@
       </div>
 
       <div v-if="hasAdmin" class="account-details-box">
-        <button class="account-details-toggle" type="button" @click="toggleAccountDetails">
+        <div class="account-details-header">
           <span class="account-details-title">
             <Users :size="16" />
             <span>账号信息</span>
@@ -192,13 +205,41 @@
               <Users :size="12" />
               <span>账号：</span>
               <strong class="account-counts">
-                <span class="account-count normal" title="正常账号数量">{{ formattedPoolAccounts.active }}</span>
+                <button
+                  class="account-filter account-status-filter normal"
+                  :aria-pressed="selectedAccountStatus === 'normal'"
+                  data-status="normal"
+                  title="筛选正常账号"
+                  type="button"
+                  @click="setAccountStatusFilter('normal')"
+                >{{ formattedPoolAccounts.active }}</button>
                 <span class="account-separator">/</span>
-                <span class="account-count limited" title="限流中账号数量">{{ formattedPoolAccounts.limited }}</span>
+                <button
+                  class="account-filter account-status-filter limited"
+                  :aria-pressed="selectedAccountStatus === 'limited'"
+                  data-status="limited"
+                  title="筛选限流中账号"
+                  type="button"
+                  @click="setAccountStatusFilter('limited')"
+                >{{ formattedPoolAccounts.limited }}</button>
                 <span class="account-separator">/</span>
-                <span class="account-count error" title="错误账号数量">{{ formattedPoolAccounts.error }}</span>
+                <button
+                  class="account-filter account-status-filter error"
+                  :aria-pressed="selectedAccountStatus === 'error'"
+                  data-status="error"
+                  title="筛选错误账号"
+                  type="button"
+                  @click="setAccountStatusFilter('error')"
+                >{{ formattedPoolAccounts.error }}</button>
                 <span class="account-separator">/</span>
-                <span class="account-count total" title="当前分组总账号数量">{{ formattedPoolAccounts.total }}</span>
+                <button
+                  class="account-filter account-status-filter total"
+                  :aria-pressed="selectedAccountStatus === 'all'"
+                  data-status="all"
+                  title="显示全部账号"
+                  type="button"
+                  @click="setAccountStatusFilter('all')"
+                >{{ formattedPoolAccounts.total }}</button>
               </strong>
             </span>
             <span class="pool-summary-badge capacity-badge" title="当前容量 / 总容量">
@@ -207,14 +248,22 @@
               <strong>{{ formattedPoolCapacity }}</strong>
             </span>
           </span>
+          <button
+            class="account-details-toggle"
+            :aria-expanded="accountDetailsExpanded"
+            :title="accountDetailsExpanded ? '收起账号详情' : '展开账号详情'"
+            type="button"
+            @click="toggleAccountDetails"
+          >
           <ChevronUp v-if="accountDetailsExpanded" class="account-details-chevron" :size="16" />
           <ChevronDown v-else class="account-details-chevron" :size="16" />
-        </button>
+          </button>
+        </div>
 
         <div v-if="accountDetailsExpanded" class="account-details-list">
-          <div v-if="adminMetrics.poolAccountDetails.length === 0" class="empty-line">暂无账号详情</div>
+          <div v-if="filteredPoolAccountDetails.length === 0" class="empty-line">暂无符合条件的账号</div>
           <article
-            v-for="item in adminMetrics.poolAccountDetails"
+            v-for="item in filteredPoolAccountDetails"
             :key="`${item.rank}-${item.name}`"
             class="account-detail-card"
             :class="item.status"
@@ -281,6 +330,9 @@
         <div class="orb__actions">
           <button class="icon-button" type="button" title="折叠到屏幕边缘" @click.stop="togglePersonalCollapsed">
             <PanelRightClose :size="15" />
+          </button>
+          <button class="icon-button" type="button" title="关闭个人悬浮球" @click.stop="hidePersonalOrb">
+            <X :size="15" />
           </button>
         </div>
       </div>
@@ -349,7 +401,10 @@ interface FloatingState {
   expandedY: number | null
 }
 
+type AccountStatusFilter = 'normal' | 'limited' | 'error' | 'all'
+
 const floatingStorageKey = 'token-orb-floating-v1'
+const accountFilterStorageKey = 'token-orb-account-filter-v1'
 const expandedSize = { width: 184, height: 132 }
 const collapsedSize = { width: 44, height: 44 }
 const settings = ref<AppSettings>(loadSettings())
@@ -380,8 +435,11 @@ const personalTokenTesting = ref(false)
 const personalTokenTestState = ref<'success' | 'error' | ''>('')
 const personalTokenTestMessage = ref('')
 const personalCollapsed = ref(false)
+const personalOrbDismissed = ref(false)
 const accountDetailsExpanded = ref(false)
+const selectedAccountStatus = ref<AccountStatusFilter>(loadAccountStatusFilter())
 const rankingMode = ref<'tokens' | 'cost'>('tokens')
+const platformUpdateAvailable = ref(false)
 const appVersion = ref('0.1.0')
 const updateVersion = ref('')
 const updateBody = ref('')
@@ -392,7 +450,9 @@ let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
 let timer: number | null = null
 let saveMessageTimer: number | null = null
 let unlistenMoved: (() => void) | null = null
+let unlistenSettingsChanged: (() => void) | null = null
 let tauriWindowApi: TauriWindowApi | null = null
+let floatingWindowInitialized = false
 let collapsedDragStarted = false
 let collapsedDragStartAt = 0
 
@@ -411,6 +471,10 @@ const formattedPoolRemaining = computed(() => {
 const formattedPoolLatestReset = computed(() => formatResetRemain(adminMetrics.value.poolLatestResetAt))
 const formattedPoolResetItems = computed(() => adminMetrics.value.poolResetItems.map(formatPoolResetItem))
 const displayedUserRanking = computed(() => sortUserRanking(adminMetrics.value.userRanking, rankingMode.value))
+const filteredPoolAccountDetails = computed(() => {
+  if (selectedAccountStatus.value === 'all') return adminMetrics.value.poolAccountDetails
+  return adminMetrics.value.poolAccountDetails.filter((item) => item.status === selectedAccountStatus.value)
+})
 const poolProgressWidth = computed(() => {
   const value = adminMetrics.value.poolRemainingPercent
   if (value === null || Number.isNaN(value)) return '0%'
@@ -437,8 +501,8 @@ const poolFillStyle = computed(() => {
 })
 const platformWindowHeight = computed(() => {
   const rankingRows = hasAdmin.value ? Math.min(adminMetrics.value.userRanking.length, 10) : 0
-  const accountDetailsRows = accountDetailsExpanded.value ? Math.min(adminMetrics.value.poolAccountDetails.length, 6) : 0
-  const accountDetailsHeight = accountDetailsExpanded.value ? 60 + accountDetailsRows * 66 : 48
+  const accountDetailsRows = accountDetailsExpanded.value ? Math.min(filteredPoolAccountDetails.value.length, 6) : 0
+  const accountDetailsHeight = accountDetailsExpanded.value ? 84 + accountDetailsRows * 66 : 72
   return Math.max(363, 253 + rankingRows * 42 + accountDetailsHeight)
 })
 const platformShellStyle = computed(() => ({ height: `${platformWindowHeight.value}px` }))
@@ -510,6 +574,18 @@ async function refreshAdmin() {
 
 function toggleAccountDetails() {
   accountDetailsExpanded.value = !accountDetailsExpanded.value
+}
+
+function loadAccountStatusFilter(): AccountStatusFilter {
+  const storedStatus = localStorage.getItem(accountFilterStorageKey)
+  return storedStatus === 'normal' || storedStatus === 'limited' || storedStatus === 'error' || storedStatus === 'all'
+    ? storedStatus
+    : 'all'
+}
+
+function setAccountStatusFilter(status: AccountStatusFilter) {
+  selectedAccountStatus.value = status
+  localStorage.setItem(accountFilterStorageKey, status)
 }
 
 function formatAccountWindowWidth(value: number | null): string {
@@ -628,6 +704,26 @@ async function checkForAppUpdate() {
   }
 }
 
+async function checkPlatformUpdate() {
+  if (!isPlatformView || !('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { check } = await import('@tauri-apps/plugin-updater')
+    platformUpdateAvailable.value = (await check()) !== null
+  } catch {
+    platformUpdateAvailable.value = false
+  }
+}
+
+async function openUpdateWindow() {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { emit } = await import('@tauri-apps/api/event')
+    await emit('token-orb-open-update')
+  } catch {
+    // 更新窗口打开失败时保留平台页，不影响监控数据展示。
+  }
+}
+
 async function syncTrayUpdateStatus(available: boolean) {
   if (!('__TAURI_INTERNALS__' in window)) return
   try {
@@ -684,6 +780,7 @@ function saveDraft() {
   showSaveMessage()
   scheduleRefresh()
   void refreshAll()
+  void notifySettingsChanged()
 }
 
 async function testPersonalToken() {
@@ -733,10 +830,35 @@ function showSaveMessage() {
 function syncExternalSettingsChange(event: StorageEvent) {
   if (isUpdaterView) return
   if (event.key !== settingsStorageKey || event.newValue === null) return
+  applyLatestSettings()
+}
+
+function applyLatestSettings() {
   settings.value = loadSettings()
   syncSettingsDraft(settings.value)
   scheduleRefresh()
   void refreshAll()
+  void initFloatingWindow()
+}
+
+async function notifySettingsChanged() {
+  if (!('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { emit } = await import('@tauri-apps/api/event')
+    await emit('token-orb-settings-updated')
+  } catch {
+    // 浏览器 storage 事件仍作为非桌面环境的同步兜底。
+  }
+}
+
+async function listenForSettingsChanges() {
+  if (isSettingsView || isUpdaterView || !('__TAURI_INTERNALS__' in window)) return
+  try {
+    const { listen } = await import('@tauri-apps/api/event')
+    unlistenSettingsChanged = await listen('token-orb-settings-updated', applyLatestSettings)
+  } catch {
+    // Tauri 事件不可用时保留浏览器 storage 事件同步。
+  }
 }
 
 function createSettingsDraft(source: AppSettings): AppSettings {
@@ -844,11 +966,30 @@ async function togglePersonalCollapsed() {
   saveFloatingState({ ...state, collapsed: false, x: nextX, y: nextY })
 }
 
+async function hidePersonalOrb() {
+  const api = await loadTauriWindowApi()
+  if (!api) return
+  await api.getCurrentWindow().hide()
+  personalOrbDismissed.value = true
+}
+
 async function initFloatingWindow() {
   if (isSettingsView || isPlatformView) return
   const api = await loadTauriWindowApi()
   if (!api) return
   const appWindow = api.getCurrentWindow()
+  if (!settings.value.personalFloatingEnabled) {
+    personalOrbDismissed.value = false
+    await appWindow.hide()
+    return
+  }
+  if (personalOrbDismissed.value) return
+
+  if (floatingWindowInitialized) {
+    await appWindow.show()
+    return
+  }
+
   const state = loadFloatingState()
   personalCollapsed.value = state.collapsed
   await appWindow.setShadow(false)
@@ -877,6 +1018,8 @@ async function initFloatingWindow() {
       expandedY: event.payload.y
     })
   })
+  floatingWindowInitialized = true
+  await appWindow.show()
 }
 
 async function loadTauriWindowApi(): Promise<TauriWindowApi | null> {
@@ -950,7 +1093,9 @@ onMounted(() => {
     return
   }
   scheduleRefresh()
+  void listenForSettingsChanges()
   void refreshAll()
+  void checkPlatformUpdate()
   void initFloatingWindow()
 })
 
@@ -958,7 +1103,7 @@ watch(platformWindowHeight, async (height) => {
   if (!isPlatformView) return
   const api = await loadTauriWindowApi()
   if (!api) return
-  await api.getCurrentWindow().setSize(new api.LogicalSize(370, height))
+  await api.getCurrentWindow().setSize(new api.LogicalSize(410, height))
 }, { immediate: true })
 
 onBeforeUnmount(() => {
@@ -966,5 +1111,6 @@ onBeforeUnmount(() => {
   if (timer !== null) window.clearInterval(timer)
   if (saveMessageTimer !== null) window.clearTimeout(saveMessageTimer)
   if (unlistenMoved) unlistenMoved()
+  if (unlistenSettingsChanged) unlistenSettingsChanged()
 })
 </script>

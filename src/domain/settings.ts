@@ -1,6 +1,7 @@
 export interface AppSettings {
   sub2apiBaseUrl: string
   adminApiKey: string
+  personalFloatingEnabled: boolean
   personalToken: string
   poolGroupName: string
   poolGroupNames: string[]
@@ -10,6 +11,7 @@ export interface AppSettings {
 export const defaultSettings: AppSettings = {
   sub2apiBaseUrl: '',
   adminApiKey: '',
+  personalFloatingEnabled: false,
   personalToken: '',
   poolGroupName: '',
   poolGroupNames: [],
@@ -44,7 +46,7 @@ export function hasAdminSettings(settings: AppSettings): boolean {
 }
 
 export function hasPersonalSettings(settings: AppSettings): boolean {
-  return settings.sub2apiBaseUrl.trim() !== '' && settings.personalToken.trim() !== ''
+  return settings.personalFloatingEnabled && settings.sub2apiBaseUrl.trim() !== '' && settings.personalToken.trim() !== ''
 }
 
 function sanitizeSettings(settings: Partial<AppSettings>): AppSettings {
@@ -56,6 +58,7 @@ function sanitizeSettings(settings: Partial<AppSettings>): AppSettings {
   return {
     sub2apiBaseUrl: String(settings.sub2apiBaseUrl ?? defaultSettings.sub2apiBaseUrl),
     adminApiKey: String(settings.adminApiKey ?? defaultSettings.adminApiKey),
+    personalFloatingEnabled: settings.personalFloatingEnabled === true,
     personalToken: String(settings.personalToken ?? defaultSettings.personalToken),
     poolGroupName: poolGroupNames[0] ?? defaultSettings.poolGroupName,
     poolGroupNames,

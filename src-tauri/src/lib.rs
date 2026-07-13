@@ -30,7 +30,6 @@ pub fn run() {
                 let _ = window.set_decorations(false);
                 let _ = window.set_shadow(false);
                 let _ = window.set_size(LogicalSize::new(184.0, 132.0));
-                let _ = window.show();
             }
 
             let show_monitor_item = MenuItem::with_id(app, "show_monitor", "显示监控面板", true, None::<&str>)?;
@@ -51,6 +50,11 @@ pub fn run() {
             let event_version_item = version_item.clone();
             app.listen("token-orb-update-status", move |event| {
                 set_tray_update_status(&event_check_update_item, &event_version_item, read_update_available(event.payload()));
+            });
+
+            let update_window_handle = app.handle().clone();
+            app.listen("token-orb-open-update", move |_| {
+                open_update_window(&update_window_handle);
             });
 
             let startup_check_update_item = check_update_item.clone();
