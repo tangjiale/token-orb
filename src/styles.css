@@ -527,25 +527,57 @@ input {
   font-weight: 600;
 }
 
-.platform-update-button {
+.platform-version {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border: 1px solid rgba(251, 191, 36, 0.82);
-  border-radius: 999px;
-  color: #fef3c7;
-  background: rgba(120, 53, 15, 0.72);
-  box-shadow: 0 0 16px rgba(245, 158, 11, 0.24);
-  padding: 4px 8px;
-  font-size: 11px;
-  font-weight: 800;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+button.platform-version {
+  border: 0;
+  background: transparent;
+  padding: 0;
   cursor: pointer;
 }
 
-.platform-update-button:hover {
-  border-color: #fcd34d;
+.platform-version--available {
+  color: #94a3b8;
+}
+
+.platform-version--available:hover {
   color: #fff;
-  background: rgba(180, 83, 9, 0.78);
+}
+
+.platform-version__update-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+  animation: update-available-pulse 1.6s ease-in-out infinite;
+}
+
+.update-release-notes {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  margin-top: 15px;
+  border: 0;
+  color: #94a3b8;
+  background: transparent;
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.update-release-notes:hover {
+  color: #cbd5e1;
 }
 
 .ranking-tabs {
@@ -1264,24 +1296,79 @@ input {
   font-size: 12px;
 }
 
-.update-summary {
+.update-panel .section-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-top: 12px;
+  margin: 0 -16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0 16px 14px;
+}
+
+.update-refresh-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 8px;
   color: #cbd5e1;
+  background: transparent;
+  cursor: pointer;
 }
 
-.update-summary strong {
-  font-size: 20px;
+.update-refresh-button:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(148, 163, 184, 0.12);
 }
 
-.update-summary strong.current-version {
-  color: #93c5fd;
+.update-version-hero {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  margin: 30px 0 24px;
 }
 
-.update-summary strong.latest-version {
-  color: #20e3b2;
+.update-version-hero strong {
+  color: #f8fafc;
+  font-size: 39px;
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+.update-version-hero span {
+  color: #94a3b8;
+  font-size: 15px;
+}
+
+.update-available-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(249, 115, 22, 0.65);
+  border-radius: 16px;
+  color: #fbbf24;
+  background: rgba(120, 53, 15, 0.2);
+  padding: 18px;
+}
+
+.update-available-card > svg {
+  flex: 0 0 auto;
+}
+
+.update-available-card div {
+  display: grid;
+  gap: 4px;
+}
+
+.update-available-card strong {
+  font-size: 21px;
+}
+
+.update-available-card span {
+  color: #fcd34d;
+  font-size: 15px;
 }
 
 .update-status {
@@ -1357,8 +1444,17 @@ input {
 }
 
 .update-actions {
+  margin-top: 16px;
+}
+
+.update-actions .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   gap: 10px;
-  margin-top: 12px;
+  width: 100%;
+  height: 48px;
+  font-size: 19px;
 }
 
 .primary-button,
@@ -1388,6 +1484,20 @@ input {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes update-available-pulse {
+  0%, 100% {
+    opacity: 0.65;
+    box-shadow: 0 0 4px rgba(245, 158, 11, 0.45);
+    transform: scale(0.88);
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 14px rgba(245, 158, 11, 0.95);
+    transform: scale(1.12);
   }
 }
 

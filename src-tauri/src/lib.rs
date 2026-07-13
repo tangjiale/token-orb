@@ -20,6 +20,7 @@ struct Sub2apiRequest {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .invoke_handler(tauri::generate_handler![sub2api_request])
@@ -195,8 +196,8 @@ fn read_update_available(payload: &str) -> bool {
 
 fn set_tray_update_status<R: Runtime>(check_update_item: &MenuItem<R>, version_item: &MenuItem<R>, available: bool) {
     if available {
-        let _ = check_update_item.set_text("有版本更新");
-        let _ = version_item.set_text(format!("当前版本 v{} · 有版本更新", env!("CARGO_PKG_VERSION")));
+        let _ = check_update_item.set_text("🟠 有版本更新");
+        let _ = version_item.set_text(format!("当前版本 v{}", env!("CARGO_PKG_VERSION")));
         return;
     }
 

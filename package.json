@@ -1,11 +1,11 @@
 {
   "name": "token-orb",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "release": {
     "notes": [
-      "账号列表默认展开并自动适配窗口高度",
-      "号池支持默认 7d 与 5h 切换展示",
-      "今日总 Token 金额高亮显示"
+      "平台信息标题显示当前版本与橙色呼吸更新提示",
+      "更新窗口升级，支持一键更新和 GitHub 更新日志跳转",
+      "系统托盘更新提示更醒目"
     ]
   },
   "private": true,
@@ -26,6 +26,7 @@
   "dependencies": {
     "@tauri-apps/api": "2.5.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
+    "@tauri-apps/plugin-opener": "2.2.0",
     "@tauri-apps/plugin-process": "^2.3.1",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@vitejs/plugin-vue": "^5.2.4",

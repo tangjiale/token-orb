@@ -79,21 +79,26 @@
   <main v-else-if="isUpdaterView" class="settings-shell update-shell">
     <section class="settings-panel standalone update-panel">
       <div class="section-title">
-        <RefreshCw :class="{ spinning: updateState === 'checking' || updateState === 'downloading' }" :size="18" />
-        <span>检查更新</span>
-      </div>
-
-      <div class="update-summary">
         <span>当前版本</span>
-        <strong class="current-version">v{{ appVersion }}</strong>
+        <button class="update-refresh-button" type="button" :disabled="updateBusy" title="重新检查更新" @click="checkForAppUpdate">
+          <RefreshCw :class="{ spinning: updateState === 'checking' || updateState === 'downloading' }" :size="20" />
+        </button>
       </div>
 
-      <div v-if="updateVersion" class="update-summary">
-        <span>最新版本</span>
-        <strong class="latest-version">v{{ updateVersion }}</strong>
+      <div class="update-version-hero">
+        <strong>v{{ appVersion }}</strong>
+        <span v-if="updateVersion">最新版本：v{{ updateVersion }}</span>
       </div>
 
-      <div class="update-status" :class="updateState">{{ updateMessage }}</div>
+      <div v-if="updateState === 'available'" class="update-available-card">
+        <Download :size="25" />
+        <div>
+          <strong>有新版本可用！</strong>
+          <span>v{{ updateVersion }}</span>
+        </div>
+      </div>
+
+      <div v-else class="update-status" :class="updateState">{{ updateMessage }}</div>
 
       <div v-if="updateBody" class="update-notes">
         <span>更新内容</span>
@@ -105,14 +110,18 @@
       </div>
 
       <div class="settings-panel__actions update-actions">
-        <button class="secondary-button" type="button" :disabled="updateBusy" @click="checkForAppUpdate">重新检查</button>
         <button v-if="updateState === 'available'" class="primary-button" type="button" @click="installAppUpdate">
+          <Download :size="19" />
           立即更新
         </button>
         <button v-if="updateState === 'installed'" class="primary-button" type="button" @click="restartApp">
           重启完成更新
         </button>
       </div>
+      <button class="update-release-notes" type="button" @click="openReleaseNotes">
+        查看更新日志
+        <ExternalLink :size="14" />
+      </button>
     </section>
   </main>
 
@@ -121,9 +130,15 @@
       <div class="section-title">
         <ListChecks :size="16" />
         <span>平台信息</span>
-        <button v-if="platformUpdateAvailable" class="platform-update-button" type="button" @click.stop="openUpdateWindow">
-          <RefreshCw :size="12" />
-          <span>有版本更新</span>
+        <button
+          class="platform-version"
+          :class="{ 'platform-version--available': platformUpdateAvailable }"
+          type="button"
+          :title="platformUpdateAvailable ? '发现新版本，点击更新' : '检查更新'"
+          @click.stop="openUpdateWindow"
+        >
+          <span>v{{ appVersion }}</span>
+          <i v-if="platformUpdateAvailable" class="platform-version__update-dot" aria-label="有版本更新"></i>
         </button>
         <time>{{ platformUpdatedText }}</time>
       </div>
@@ -383,6 +398,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import {
   ChevronDown,
   ChevronUp,
+  Download,
+  ExternalLink,
   ListChecks,
   MonitorDot,
   Network,
@@ -691,12 +708,7 @@ function formatUsageWindowRemain(value: string | null): string {
 
 async function initUpdaterView() {
   if (!isUpdaterView) return
-  try {
-    const { getVersion } = await import('@tauri-apps/api/app')
-    appVersion.value = await getVersion()
-  } catch {
-    appVersion.value = '0.1.0'
-  }
+  await initAppVersion()
 
   if ('__TAURI_INTERNALS__' in window) {
     try {
@@ -710,6 +722,15 @@ async function initUpdaterView() {
   }
 
   await checkForAppUpdate()
+}
+
+async function initAppVersion() {
+  try {
+    const { getVersion } = await import('@tauri-apps/api/app')
+    appVersion.value = await getVersion()
+  } catch {
+    appVersion.value = '0.1.0'
+  }
 }
 
 async function checkForAppUpdate() {
@@ -779,6 +800,17 @@ async function openUpdateWindow() {
     await emit('token-orb-open-update')
   } catch {
     // 更新窗口打开失败时保留平台页，不影响监控数据展示。
+  }
+}
+
+async function openReleaseNotes() {
+  const version = updateVersion.value || appVersion.value
+  const releaseUrl = `https://github.com/tangjiale/token-orb/releases/tag/v${version}`
+  try {
+    const { openUrl } = await import('@tauri-apps/plugin-opener')
+    await openUrl(releaseUrl)
+  } catch {
+    window.open(releaseUrl, '_blank', 'noopener,noreferrer')
   }
 }
 
@@ -1152,6 +1184,7 @@ onMounted(() => {
     void initUpdaterView()
     return
   }
+  void initAppVersion()
   scheduleRefresh()
   void listenForSettingsChanges()
   void refreshAll()

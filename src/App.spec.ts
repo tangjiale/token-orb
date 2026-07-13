@@ -4,13 +4,15 @@ import App from './App.vue'
 import { settingsStorageKey, type AppSettings } from '@/domain/settings'
 import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 
-const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, hidePersonalFloatingOrb, listenTauriEvent, resetSettingsUpdatedListener, tauriWindow } = vi.hoisted(() => {
+const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, getAppVersion, hidePersonalFloatingOrb, listenTauriEvent, openReleaseNotes, resetSettingsUpdatedListener, tauriWindow } = vi.hoisted(() => {
   let settingsUpdatedListener: (() => void) | undefined
-  const checkForAvailableUpdate = vi.fn(async () => ({
+  const checkForAvailableUpdate = vi.fn<() => Promise<{ body: string; version: string } | null>>(async () => ({
     body: '修复平台更新提示',
     version: '0.4.2'
   }))
   const hidePersonalFloatingOrb = vi.fn()
+  const getAppVersion = vi.fn(async () => '0.4.3')
+  const openReleaseNotes = vi.fn(async () => undefined)
   const emitTauriEvent = vi.fn(async () => undefined)
   const listenTauriEvent = vi.fn(async (eventName: string, listener: () => void) => {
     if (eventName === 'token-orb-settings-updated') {
@@ -33,8 +35,10 @@ const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, hid
     checkForAvailableUpdate,
     emitTauriEvent,
     getSettingsUpdatedListener: () => settingsUpdatedListener,
+    getAppVersion,
     hidePersonalFloatingOrb,
     listenTauriEvent,
+    openReleaseNotes,
     resetSettingsUpdatedListener: () => {
       settingsUpdatedListener = undefined
     },
@@ -96,6 +100,10 @@ vi.mock('@tauri-apps/api/window', () => ({
   getCurrentWindow: vi.fn(() => tauriWindow)
 }))
 
+vi.mock('@tauri-apps/api/app', () => ({
+  getVersion: getAppVersion
+}))
+
 vi.mock('@tauri-apps/api/event', () => ({
   emit: emitTauriEvent,
   listen: listenTauriEvent
@@ -103,6 +111,10 @@ vi.mock('@tauri-apps/api/event', () => ({
 
 vi.mock('@tauri-apps/plugin-updater', () => ({
   check: checkForAvailableUpdate
+}))
+
+vi.mock('@tauri-apps/plugin-opener', () => ({
+  openUrl: openReleaseNotes
 }))
 
 const baseSettings: AppSettings = {
@@ -281,13 +293,28 @@ describe('App settings sync', () => {
     expect(tauriWindow.show).toHaveBeenCalledOnce()
   })
 
-  it('shows a version update button beside the platform title when a new version is available', async () => {
+  it('shows the current version beside the platform title and marks it when a new version is available', async () => {
     Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
     localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
     const wrapper = mount(App)
     await flushPromises()
 
-    expect(wrapper.get('.monitor-panel > .section-title button').text()).toBe('有版本更新')
+    const button = wrapper.get('.monitor-panel > .section-title .platform-version--available')
+    expect(button.text()).toContain('v0.4.3')
+    expect(button.find('.platform-version__update-dot').exists()).toBe(true)
+  })
+
+  it('shows the current version in the normal color when no update is available', async () => {
+    checkForAvailableUpdate.mockResolvedValueOnce(null)
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    const version = wrapper.get('.monitor-panel > .section-title .platform-version')
+    expect(version.text()).toContain('v0.4.3')
+    expect(version.classes()).not.toContain('platform-version--available')
+    expect(version.find('.platform-version__update-dot').exists()).toBe(false)
   })
 
   it('emits the native update event after clicking the platform version update button', async () => {
@@ -296,10 +323,22 @@ describe('App settings sync', () => {
     const wrapper = mount(App)
     await flushPromises()
 
-    await wrapper.get('.monitor-panel > .section-title button').trigger('click')
+    await wrapper.get('.monitor-panel > .section-title .platform-version--available').trigger('click')
     await flushPromises()
 
     expect(emitTauriEvent).toHaveBeenCalledWith('token-orb-open-update')
+  })
+
+  it('opens the matching GitHub release page from the updater changelog link', async () => {
+    window.history.replaceState({}, '', '/?view=updater')
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('.update-release-notes').trigger('click')
+    await flushPromises()
+
+    expect(openReleaseNotes).toHaveBeenCalledWith('https://github.com/tangjiale/token-orb/releases/tag/v0.4.2')
   })
 
   it('tests personal JWT independently from admin API settings', async () => {
