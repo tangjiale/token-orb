@@ -230,7 +230,7 @@ describe('tokenMetrics', () => {
     ])
   })
 
-  it('excludes limited and errored accounts from selected group active count', () => {
+  it('excludes account-limited and errored accounts from selected group active count', () => {
     const accounts = [
       { group_id: 2, status: 'active' },
       { group_id: 2, status: 'active' },
@@ -252,7 +252,12 @@ describe('tokenMetrics', () => {
       { group_id: 2, status: 'error', error_message: 'upstream auth failed' }
     ]
 
-    expect(countPoolAccounts(accounts, 2)).toEqual({ active: 3, limited: 2, error: 1, total: 7 })
+    expect(countPoolAccounts(accounts, 2)).toEqual({ active: 4, limited: 1, error: 1, total: 7 })
+
+    expect(listPoolAccountDetails(accounts.slice(5, 6), 2, new Date('2026-03-16T09:00:00Z'))[0]).toMatchObject({
+      status: 'normal',
+      statusText: '正常'
+    })
   })
 
   it('formats compact values for orb display', () => {

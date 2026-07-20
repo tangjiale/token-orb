@@ -509,9 +509,8 @@ function accountIsLimited(item: unknown, now = new Date()): boolean {
   if (isFutureTimestamp(item.rate_limit_reset_at, now)) return true
   if (isFutureTimestamp(item.overload_until, now)) return true
   if (isFutureTimestamp(item.temp_unschedulable_until, now)) return true
-
-  const extra = isRecord(item.extra) ? item.extra : null
-  return hasActiveModelRateLimit(extra, now)
+  // 模型级限流只影响对应模型，不代表账号整体不可调度。
+  return false
 }
 
 function accountIsErrored(item: unknown): boolean {
@@ -630,12 +629,4 @@ function isFutureTimestamp(value: unknown, now: Date): boolean {
   if (typeof value !== 'string' || value.trim() === '') return false
   const timestamp = Date.parse(value)
   return Number.isFinite(timestamp) && timestamp > now.getTime()
-}
-
-function hasActiveModelRateLimit(extra: Record<string, unknown> | null, now: Date): boolean {
-  if (!extra || !isRecord(extra.model_rate_limits)) return false
-  return Object.values(extra.model_rate_limits).some((value) => {
-    if (!isRecord(value)) return false
-    return isFutureTimestamp(value.rate_limit_reset_at, now)
-  })
 }
