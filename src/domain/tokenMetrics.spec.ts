@@ -166,15 +166,15 @@ describe('tokenMetrics', () => {
         todayRequests: 159,
         todayTokens: 52220000,
         usageWindows: [
-          { type: '5h', remainingPercent: 91, resetAt: '2026-03-16T12:37:00.000Z' },
-          { type: '7d', remainingPercent: 93, resetAt: '2026-03-23T09:00:00.000Z' }
+          { type: '5h', usedPercent: 9, resetAt: '2026-03-16T12:37:00.000Z' },
+          { type: '7d', usedPercent: 7, resetAt: '2026-03-23T09:00:00.000Z' }
         ]
       },
       {
         rank: 2,
         name: 'punks.salver_6h+g4@icloud.com',
         status: 'limited',
-        statusText: '限流',
+        statusText: '限流中',
         schedulable: true,
         scheduleText: '调度中',
         capacityText: '--',
@@ -182,8 +182,8 @@ describe('tokenMetrics', () => {
         todayRequests: 158,
         todayTokens: 22560000,
         usageWindows: [
-          { type: '5h', remainingPercent: 49, resetAt: '2026-03-20T08:00:00.000Z' },
-          { type: '7d', remainingPercent: 50, resetAt: '2026-03-23T08:00:00.000Z' }
+          { type: '5h', usedPercent: 51, resetAt: '2026-03-20T08:00:00.000Z' },
+          { type: '7d', usedPercent: 50, resetAt: '2026-03-23T08:00:00.000Z' }
         ]
       },
       {

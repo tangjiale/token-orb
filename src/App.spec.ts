@@ -449,8 +449,8 @@ describe('App settings sync', () => {
           todayRequests: 159,
           todayTokens: 52220000,
           usageWindows: [
-            { type: '5h', remainingPercent: 91, resetAt: '2026-03-16T12:37:00.000Z' },
-            { type: '7d', remainingPercent: 93, resetAt: '2026-03-23T09:00:00.000Z' }
+            { type: '5h', usedPercent: 9, resetAt: '2026-03-16T12:37:00.000Z' },
+            { type: '7d', usedPercent: 7, resetAt: '2026-03-23T09:00:00.000Z' }
           ]
         }
       ],
@@ -481,24 +481,72 @@ describe('App settings sync', () => {
     expect(wrapper.get('button.account-details-toggle').attributes('aria-expanded')).toBe('true')
     expect(wrapper.get('.monitor-card .token-cost').text()).toBe('$32.48')
     expect(wrapper.get('.ranking-value .token-cost').text()).toBe('$13.08')
-    expect(wrapper.text()).toContain('调度中')
+    expect(wrapper.get('.schedule-pill').text()).toBe('调度中')
+    expect(wrapper.get('.account-status-pill.normal').text()).toBe('正常')
     expect(wrapper.text()).toContain('0 / 10')
     expect(wrapper.text()).toContain('请求 159')
     expect(wrapper.text()).toContain('Token 52.2M')
-    expect(wrapper.text()).toContain('5h剩余 91% · 3h 37m')
-    expect(wrapper.text()).toContain('7d剩余 93% · 7d')
+    expect(wrapper.text()).toContain('5h使用量 9% · 3h 37m')
+    expect(wrapper.text()).toContain('7d使用量 7% · 7d')
+    expect(wrapper.get('.usage-window-bar i').attributes('style')).toContain('width: 9%')
 
     await wrapper.get('button.account-details-toggle').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).not.toContain('调度中')
-    expect(wrapper.text()).not.toContain('5h剩余 91%')
+    expect(wrapper.find('.schedule-pill').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('5h使用量 9%')
 
     await wrapper.get('button.account-details-toggle').trigger('click')
     await flushPromises()
 
-    expect(wrapper.text()).toContain('调度中')
-    expect(wrapper.text()).toContain('5h剩余 91% · 3h 37m')
+    expect(wrapper.get('.schedule-pill').text()).toBe('调度中')
+    expect(wrapper.text()).toContain('5h使用量 9% · 3h 37m')
+  })
+
+  it('colors account usage bars by the used percentage thresholds', async () => {
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: null,
+      todayTotalCost: null,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: { active: 3, limited: 0, error: 0, total: 3 },
+      poolCapacity: null,
+      poolAccountDetails: [80, 81, 100].map((usedPercent, index) => ({
+        rank: index + 1,
+        name: `账号${usedPercent}`,
+        status: 'normal' as const,
+        statusText: '正常',
+        schedulable: true,
+        scheduleText: '调度中',
+        capacityText: '0 / 10',
+        capacityUsed: 0,
+        todayRequests: 0,
+        todayTokens: 0,
+        usageWindows: [{ type: '5h' as const, usedPercent, resetAt: null }]
+      })),
+      userRanking: [],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    const bars = wrapper.findAll('.usage-window-bar i')
+    expect(bars).toHaveLength(3)
+    expect(bars[0].classes()).not.toContain('warning')
+    expect(bars[0].classes()).not.toContain('danger')
+    expect(bars[1].classes()).toContain('warning')
+    expect(bars[1].classes()).not.toContain('danger')
+    expect(bars[2].classes()).toContain('danger')
+    expect(bars.map((bar) => bar.attributes('style'))).toEqual([
+      expect.stringContaining('width: 80%'),
+      expect.stringContaining('width: 81%'),
+      expect.stringContaining('width: 100%')
+    ])
+    expect(wrapper.text()).toContain('5h使用量 80%')
+    expect(wrapper.text()).toContain('5h使用量 81%')
+    expect(wrapper.text()).toContain('5h使用量 100%')
   })
 
   it('filters group account details from status values and only toggles them from the arrow', async () => {
@@ -512,9 +560,9 @@ describe('App settings sync', () => {
       poolCapacity: null,
       poolAccountDetails: [
         { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] },
-        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流', schedulable: false, scheduleText: '限流中', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] },
-        { rank: 3, name: '错误账号', status: 'error', statusText: '错误', schedulable: false, scheduleText: '不可调度', capacityText: '2 / 10', capacityUsed: 2, todayRequests: 3, todayTokens: 3, usageWindows: [] },
-        { rank: 4, name: '停用账号', status: 'disabled', statusText: '停用', schedulable: false, scheduleText: '已停用', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 4, todayTokens: 4, usageWindows: [] }
+        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流中', schedulable: false, scheduleText: '已关闭', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] },
+        { rank: 3, name: '错误账号', status: 'error', statusText: '错误', schedulable: false, scheduleText: '已关闭', capacityText: '2 / 10', capacityUsed: 2, todayRequests: 3, todayTokens: 3, usageWindows: [] },
+        { rank: 4, name: '停用账号', status: 'disabled', statusText: '停用', schedulable: false, scheduleText: '已关闭', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 4, todayTokens: 4, usageWindows: [] }
       ],
       userRanking: [],
       updatedAt: '2026-03-16T09:00:00.000Z'
@@ -538,6 +586,8 @@ describe('App settings sync', () => {
     expect(wrapper.text()).toContain('限流账号')
     expect(wrapper.text()).toContain('错误账号')
     expect(wrapper.text()).toContain('停用账号')
+    expect(wrapper.find('.schedule-pill:not(.off)').text()).toBe('调度中')
+    expect(wrapper.findAll('.schedule-pill.off')).toHaveLength(3)
   })
 
   it('restores the persisted account status filter after reopening the platform window', async () => {
@@ -551,7 +601,7 @@ describe('App settings sync', () => {
       poolCapacity: null,
       poolAccountDetails: [
         { rank: 1, name: '正常账号', status: 'normal', statusText: '正常', schedulable: true, scheduleText: '调度中', capacityText: '0 / 10', capacityUsed: 0, todayRequests: 1, todayTokens: 1, usageWindows: [] },
-        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流', schedulable: false, scheduleText: '限流中', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] }
+        { rank: 2, name: '限流账号', status: 'limited', statusText: '限流中', schedulable: false, scheduleText: '已关闭', capacityText: '1 / 10', capacityUsed: 1, todayRequests: 2, todayTokens: 2, usageWindows: [] }
       ],
       userRanking: [],
       updatedAt: '2026-03-16T09:00:00.000Z'
@@ -595,7 +645,7 @@ describe('App settings sync', () => {
           status: 'limited',
           statusText: '限流中',
           schedulable: false,
-          scheduleText: '限流中',
+          scheduleText: '已关闭',
           capacityText: '0 / 10',
           capacityUsed: 0,
           todayRequests: 0,
@@ -608,7 +658,7 @@ describe('App settings sync', () => {
           status: 'error',
           statusText: '错误',
           schedulable: false,
-          scheduleText: '不可调度',
+          scheduleText: '已关闭',
           capacityText: '0 / 10',
           capacityUsed: 0,
           todayRequests: 0,

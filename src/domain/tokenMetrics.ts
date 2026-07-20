@@ -65,7 +65,7 @@ export type PoolAccountUsageWindowType = '5h' | '7d'
 
 export interface PoolAccountUsageWindow {
   type: PoolAccountUsageWindowType
-  remainingPercent: number
+  usedPercent: number
   resetAt: string | null
 }
 
@@ -525,13 +525,13 @@ function getAccountDetailStatus(item: Record<string, unknown>, now: Date): PoolA
   if (accountIsErrored(item)) return 'error'
   if (accountIsLimited(item, now)) return 'limited'
   if (accountIsActive(item, now)) return 'normal'
-  if (status === 'active' && item.schedulable === false) return 'normal'
+  if (status === 'active' && item.schedulable === false) return 'disabled'
   return 'disabled'
 }
 
 function formatAccountStatusText(status: PoolAccountDetailStatus): string {
   if (status === 'normal') return '正常'
-  if (status === 'limited') return '限流'
+  if (status === 'limited') return '限流中'
   if (status === 'error') return '错误'
   return '停用'
 }
@@ -590,7 +590,7 @@ function listAccountUsageWindows(extra: Record<string, unknown> | null, now: Dat
       const resetAt = readUsageResetAt(extra, type)
       return {
         type,
-        remainingPercent: Math.max(0, 100 - usedPercent),
+        usedPercent,
         resetAt: resetAt === null || resetAt <= now.getTime() ? null : new Date(resetAt).toISOString()
       }
     })

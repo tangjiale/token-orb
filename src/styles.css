@@ -981,6 +981,11 @@ button.platform-version {
   white-space: nowrap;
 }
 
+.schedule-pill.off {
+  color: #94a3b8;
+  background: rgba(71, 85, 105, 0.36);
+}
+
 .account-capacity-pill {
   display: inline-flex;
   width: 50px;
@@ -1002,11 +1007,6 @@ button.platform-version {
 .account-capacity-pill.active {
   color: #fbbf24;
   background: rgba(120, 53, 15, 0.56);
-}
-
-.schedule-pill.off {
-  color: #94a3b8;
-  background: rgba(71, 85, 105, 0.36);
 }
 
 .schedule-pill i {
@@ -1079,13 +1079,12 @@ button.platform-version {
   transition: width 180ms ease;
 }
 
-.account-detail-card.limited .usage-window-bar i {
-  background: #fbbf24;
+.usage-window-bar i.warning {
+  background: #f59e0b;
 }
 
-.account-detail-card.error .usage-window-bar i,
-.account-detail-card.disabled .usage-window-bar i {
-  background: #64748b;
+.usage-window-bar i.danger {
+  background: #fb4d5f;
 }
 
 .field {

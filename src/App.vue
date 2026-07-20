@@ -329,7 +329,10 @@
                 <span v-for="window in item.usageWindows" :key="window.type" class="usage-window">
                   <span class="usage-window-label">{{ window.type }}</span>
                   <span class="usage-window-bar">
-                    <i :style="{ width: formatAccountWindowWidth(window.remainingPercent) }"></i>
+                    <i
+                      :class="formatAccountWindowClass(window.usedPercent)"
+                      :style="{ width: formatAccountWindowWidth(window.usedPercent) }"
+                    ></i>
                   </span>
                   <span>{{ formatAccountWindowText(window) }}</span>
                 </span>
@@ -654,6 +657,14 @@ function formatAccountWindowWidth(value: number | null): string {
   return `${Math.min(100, Math.max(0, Math.round(value)))}%`
 }
 
+function formatAccountWindowClass(value: number | null): '' | 'warning' | 'danger' {
+  if (value === null || Number.isNaN(value)) return ''
+  const used = Math.min(100, Math.max(0, value))
+  if (used >= 100) return 'danger'
+  if (used > 80) return 'warning'
+  return ''
+}
+
 function formatRequestCount(value: number | null): string {
   if (value === null || Number.isNaN(value)) return '--'
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value)
@@ -686,9 +697,9 @@ function sortUserRanking(items: UserTodayUsageRankItem[], mode: 'tokens' | 'cost
 }
 
 function formatAccountWindowText(item: PoolAccountUsageWindow): string {
-  const remaining = Math.round(item.remainingPercent)
+  const used = Math.round(item.usedPercent)
   const resetRemain = formatUsageWindowRemain(item.resetAt)
-  return resetRemain === '--' ? `剩余 ${remaining}%` : `剩余 ${remaining}% · ${resetRemain}`
+  return resetRemain === '--' ? `使用量 ${used}%` : `使用量 ${used}% · ${resetRemain}`
 }
 
 function formatUsageWindowRemain(value: string | null): string {
