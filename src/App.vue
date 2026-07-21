@@ -193,6 +193,19 @@
         </article>
       </div>
 
+      <div v-if="hasAdmin" class="monitor-grid monitor-grid--secondary">
+        <article class="monitor-card">
+          <span>总 Token</span>
+          <strong>{{ formattedAdminTotal }}</strong>
+          <em class="token-cost" title="实际消费">{{ formattedAdminTotalActualCost }}</em>
+        </article>
+        <article class="monitor-card">
+          <span>平均响应</span>
+          <strong class="response-duration">{{ formattedAverageDuration }}</strong>
+          <em class="active-users">{{ formattedActiveUsers }}</em>
+        </article>
+      </div>
+
       <div v-if="hasAdmin" class="ranking-box">
         <div class="section-title">
           <Users :size="16" />
@@ -200,34 +213,155 @@
           <div class="ranking-tabs" role="tablist" aria-label="今日榜单切换">
             <button
               class="ranking-tab"
-              :class="{ active: rankingMode === 'tokens' }"
+              :class="{ active: rankingView === 'users' && rankingMode === 'tokens' }"
               type="button"
               role="tab"
-              :aria-selected="rankingMode === 'tokens'"
-              @click="rankingMode = 'tokens'"
+              :aria-selected="rankingView === 'users' && rankingMode === 'tokens'"
+              @click="showUserRanking('tokens')"
             >
               今日用量榜
             </button>
             <button
               class="ranking-tab"
-              :class="{ active: rankingMode === 'cost' }"
+              :class="{ active: rankingView === 'users' && rankingMode === 'cost' }"
               type="button"
               role="tab"
-              :aria-selected="rankingMode === 'cost'"
-              @click="rankingMode = 'cost'"
+              :aria-selected="rankingView === 'users' && rankingMode === 'cost'"
+              @click="showUserRanking('cost')"
             >
               今日消费榜
             </button>
+            <button
+              class="ranking-tab"
+              :class="{ active: rankingView === 'models' }"
+              type="button"
+              role="tab"
+              :aria-selected="rankingView === 'models'"
+              @click="showModelRanking"
+            >
+              模型用量榜
+            </button>
+          </div>
+          <button
+            class="ranking-toggle"
+            :aria-expanded="rankingExpanded"
+            :title="rankingExpanded ? '收起排行榜' : '展开排行榜'"
+            type="button"
+            @click="toggleRanking"
+          >
+            <ChevronUp v-if="rankingExpanded" :size="16" />
+            <ChevronDown v-else :size="16" />
+          </button>
+        </div>
+        <div v-if="rankingExpanded" class="ranking-content">
+        <template v-if="rankingView === 'users'">
+          <div v-if="adminMetrics.userRanking.length === 0" class="empty-line">暂无数据</div>
+          <div v-for="(item, index) in displayedUserRanking" :key="rankingUserKey(item)" class="ranking-entry">
+          <button
+            class="ranking-row"
+            :aria-controls="`ranking-models-${rankingUserKey(item)}`"
+            :aria-expanded="isRankingUserExpanded(item)"
+            :title="isRankingUserExpanded(item) ? '收起模型用量' : '展开模型用量'"
+            type="button"
+            @click="toggleRankingUser(item)"
+          >
+            <b>#{{ index + 1 }}</b>
+            <span>{{ item.displayName }}</span>
+            <div class="ranking-value" :class="{ 'ranking-value--cost': rankingMode === 'cost' }">
+              <strong>{{ formatTokenCount(item.tokens) }}</strong>
+              <em class="token-cost">{{ formatCost(item.actualCost) }}</em>
+            </div>
+            <ChevronUp v-if="isRankingUserExpanded(item)" class="ranking-chevron" :size="15" />
+            <ChevronDown v-else class="ranking-chevron" :size="15" />
+          </button>
+          <div
+            v-if="isRankingUserExpanded(item)"
+            :id="`ranking-models-${rankingUserKey(item)}`"
+            class="ranking-model-list"
+          >
+            <div v-if="rankingModelUsageState[rankingUserKey(item)] === 'loading'" class="ranking-model-empty">加载模型用量中...</div>
+            <div v-else-if="rankingModelUsageState[rankingUserKey(item)] === 'error'" class="ranking-model-empty">模型用量加载失败</div>
+            <div v-else-if="sortedRankingModelUsage(item).length === 0" class="ranking-model-empty">暂无模型用量</div>
+            <div v-for="model in sortedRankingModelUsage(item)" :key="model.model" class="ranking-model-row">
+              <span>{{ model.model }}</span>
+              <div class="ranking-value ranking-value--model" :class="{ 'ranking-value--cost': rankingMode === 'cost' }">
+                <strong>{{ formatTokenCount(model.tokens) }}</strong>
+                <em class="token-cost">{{ formatCost(model.actualCost) }}</em>
+              </div>
+            </div>
           </div>
         </div>
-        <div v-if="adminMetrics.userRanking.length === 0" class="empty-line">暂无数据</div>
-        <div v-for="(item, index) in displayedUserRanking" :key="item.userId ?? item.displayName" class="ranking-row">
-          <b>#{{ index + 1 }}</b>
-          <span>{{ item.displayName }}</span>
-          <div class="ranking-value" :class="{ 'ranking-value--cost': rankingMode === 'cost' }">
-            <strong>{{ formatTokenCount(item.tokens) }}</strong>
-            <em class="token-cost">{{ formatCost(item.actualCost) }}</em>
+        </template>
+        <div v-else class="model-ranking-table">
+          <div class="model-ranking-head">
+            <span>模型</span>
+            <button
+              :class="{ active: modelRankingSort === 'requests' }"
+              :aria-pressed="modelRankingSort === 'requests'"
+              title="按请求数从高到低排序"
+              type="button"
+              @click="modelRankingSort = 'requests'"
+            >
+              <span>请求</span>
+              <ArrowDown v-if="modelRankingSort === 'requests'" :size="11" />
+              <ArrowUpDown v-else :size="11" />
+            </button>
+            <button
+              :class="{ active: modelRankingSort === 'tokens' }"
+              :aria-pressed="modelRankingSort === 'tokens'"
+              title="按 Token 从高到低排序"
+              type="button"
+              @click="modelRankingSort = 'tokens'"
+            >
+              <span>Token</span>
+              <ArrowDown v-if="modelRankingSort === 'tokens'" :size="11" />
+              <ArrowUpDown v-else :size="11" />
+            </button>
+            <button
+              :class="{ active: modelRankingSort === 'cost' }"
+              :aria-pressed="modelRankingSort === 'cost'"
+              title="按消费从高到低排序"
+              type="button"
+              @click="modelRankingSort = 'cost'"
+            >
+              <span>消费</span>
+              <ArrowDown v-if="modelRankingSort === 'cost'" :size="11" />
+              <ArrowUpDown v-else :size="11" />
+            </button>
+            <span></span>
           </div>
+          <div v-if="modelRankingState === 'loading'" class="ranking-model-empty">加载模型用量中...</div>
+          <div v-else-if="modelRankingState === 'error'" class="ranking-model-empty">模型用量加载失败</div>
+          <div v-else-if="sortedModelRanking.length === 0" class="ranking-model-empty">暂无模型用量</div>
+          <div v-for="item in sortedModelRanking" :key="item.model" class="model-ranking-entry">
+            <button
+              class="model-ranking-row"
+              :aria-controls="`model-ranking-users-${modelRankingKey(item.model)}`"
+              :aria-expanded="isModelRankingExpanded(item.model)"
+              :title="isModelRankingExpanded(item.model) ? '收起用户用量' : '展开用户用量'"
+              type="button"
+              @click="toggleModelRanking(item.model)"
+            >
+              <span :title="item.model">{{ item.model }}</span>
+              <strong>{{ formatRequestCount(item.requests) }}</strong>
+              <strong>{{ formatTokenCount(item.tokens) }}</strong>
+              <em>{{ formatCost(item.actualCost) }}</em>
+              <ChevronUp v-if="isModelRankingExpanded(item.model)" :size="15" />
+              <ChevronDown v-else :size="15" />
+            </button>
+            <div v-if="isModelRankingExpanded(item.model)" :id="`model-ranking-users-${modelRankingKey(item.model)}`" class="model-ranking-users">
+              <div v-if="modelRankingUserState[modelRankingKey(item.model)] === 'loading'" class="ranking-model-empty">加载用户用量中...</div>
+              <div v-else-if="modelRankingUserState[modelRankingKey(item.model)] === 'error'" class="ranking-model-empty">用户用量加载失败</div>
+              <div v-else-if="sortedModelRankingUsers(item.model).length === 0" class="ranking-model-empty">暂无用户用量</div>
+              <div v-for="user in sortedModelRankingUsers(item.model)" :key="`${item.model}-${user.userId ?? user.displayName}`" class="model-ranking-user-row">
+                <span :title="user.displayName">{{ user.displayName }}</span>
+                <strong>{{ formatRequestCount(user.requests) }}</strong>
+                <strong>{{ formatTokenCount(user.tokens) }}</strong>
+                <em>{{ formatCost(user.actualCost) }}</em>
+              </div>
+            </div>
+          </div>
+        </div>
         </div>
       </div>
 
@@ -399,6 +533,8 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import {
+  ArrowDown,
+  ArrowUpDown,
   ChevronDown,
   ChevronUp,
   Download,
@@ -411,7 +547,7 @@ import {
   Users,
   X
 } from 'lucide-vue-next'
-import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
+import { fetchAdminModelUsageRanking, fetchAdminModelUserUsage, fetchAdminMonitorMetrics, fetchAdminUserModelUsage, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 import {
   formatCost,
   formatFirstToken,
@@ -419,10 +555,13 @@ import {
   formatPoolCapacity,
   formatTokenCount,
   type AdminMonitorMetrics,
+  type ModelUsageRankItem,
+  type ModelUserUsageItem,
   type PoolAccountUsageWindow,
   type PoolAccountUsageWindowType,
   type PoolResetItem,
   type TokenOrbMetrics,
+  type UserModelUsageItem,
   type UserTodayUsageRankItem
 } from '@/domain/tokenMetrics'
 import {
@@ -445,6 +584,8 @@ interface FloatingState {
 }
 
 type AccountStatusFilter = 'normal' | 'limited' | 'error' | 'all'
+type RankingView = 'users' | 'models'
+type ModelRankingSort = 'requests' | 'tokens' | 'cost'
 
 const floatingStorageKey = 'token-orb-floating-v1'
 const accountFilterStorageKey = 'token-orb-account-filter-v1'
@@ -458,6 +599,12 @@ const personalMetrics = ref<TokenOrbMetrics>({ todayTokens: null, firstTokenMs: 
 const adminMetrics = ref<AdminMonitorMetrics>({
   todayTotalTokens: null,
   todayTotalCost: null,
+  totalTokens: null,
+  totalActualCost: null,
+  totalAccountCost: null,
+  totalStandardCost: null,
+  averageDurationMs: null,
+  activeUsers: null,
   poolRemainingPercent: null,
   poolLatestResetAt: null,
   poolResetItems: [],
@@ -480,10 +627,21 @@ const personalTokenTestMessage = ref('')
 const personalCollapsed = ref(false)
 const personalOrbDismissed = ref(false)
 const accountDetailsExpanded = ref(true)
+const rankingExpanded = ref(true)
 const selectedAccountStatus = ref<AccountStatusFilter>(loadAccountStatusFilter())
 const monitorPanelRef = ref<HTMLElement | null>(null)
 const poolWindowType = ref<PoolAccountUsageWindowType>('7d')
 const rankingMode = ref<'tokens' | 'cost'>('tokens')
+const rankingView = ref<RankingView>('users')
+const modelRankingSort = ref<ModelRankingSort>('tokens')
+const modelRanking = ref<ModelUsageRankItem[]>([])
+const modelRankingState = ref<'idle' | 'loading' | 'ready' | 'error'>('idle')
+const expandedModelRankingKeys = ref<string[]>([])
+const modelRankingUsers = ref<Record<string, ModelUserUsageItem[]>>({})
+const modelRankingUserState = ref<Record<string, 'loading' | 'ready' | 'error'>>({})
+const expandedRankingUserKeys = ref<string[]>([])
+const rankingModelUsage = ref<Record<string, UserModelUsageItem[]>>({})
+const rankingModelUsageState = ref<Record<string, 'loading' | 'ready' | 'error'>>({})
 const platformUpdateAvailable = ref(false)
 const appVersion = ref('0.1.0')
 const updateVersion = ref('')
@@ -494,6 +652,8 @@ const downloadPercent = ref<number | null>(null)
 let availableUpdate: import('@tauri-apps/plugin-updater').Update | null = null
 let timer: number | null = null
 let saveMessageTimer: number | null = null
+let rankingModelUsageRefreshEpoch = 0
+let modelRankingRefreshEpoch = 0
 let unlistenMoved: (() => void) | null = null
 let unlistenSettingsChanged: (() => void) | null = null
 let tauriWindowApi: TauriWindowApi | null = null
@@ -507,6 +667,10 @@ const formattedPersonalToday = computed(() => formatTokenCount(personalMetrics.v
 const formattedFirstToken = computed(() => formatFirstToken(personalMetrics.value.firstTokenMs))
 const formattedAdminToday = computed(() => formatTokenCount(adminMetrics.value.todayTotalTokens))
 const formattedAdminTodayCost = computed(() => formatCost(adminMetrics.value.todayTotalCost))
+const formattedAdminTotal = computed(() => formatTokenCount(adminMetrics.value.totalTokens ?? null))
+const formattedAdminTotalActualCost = computed(() => formatCost(adminMetrics.value.totalActualCost ?? null))
+const formattedAverageDuration = computed(() => formatDuration(adminMetrics.value.averageDurationMs ?? null))
+const formattedActiveUsers = computed(() => adminMetrics.value.activeUsers == null ? '活跃用户 --' : `${formatRequestCount(adminMetrics.value.activeUsers)} 活跃用户`)
 const formattedPoolAccounts = computed(() => formatPoolAccountCount(adminMetrics.value.poolAccounts))
 const formattedPoolCapacity = computed(() => formatPoolCapacity(adminMetrics.value.poolCapacity))
 const formattedPoolRemaining = computed(() => {
@@ -530,6 +694,7 @@ const formattedSelectedPoolResetItems = computed(() => (poolWindowType.value ===
   ? adminMetrics.value.poolSevenDayResetItems ?? []
   : adminMetrics.value.poolResetItems).map(formatPoolResetItem))
 const displayedUserRanking = computed(() => sortUserRanking(adminMetrics.value.userRanking, rankingMode.value))
+const sortedModelRanking = computed(() => sortModelRanking(modelRanking.value, modelRankingSort.value))
 const filteredPoolAccountDetails = computed(() => {
   if (selectedAccountStatus.value === 'all') return adminMetrics.value.poolAccountDetails
   return adminMetrics.value.poolAccountDetails.filter((item) => item.status === selectedAccountStatus.value)
@@ -629,11 +794,146 @@ async function refreshPersonal() {
 
 async function refreshAdmin() {
   if (!hasAdmin.value) return
+  const refreshEpoch = ++rankingModelUsageRefreshEpoch
   adminMetrics.value = await fetchAdminMonitorMetrics({
     baseUrl: settings.value.sub2apiBaseUrl,
     apiKey: settings.value.adminApiKey,
     poolGroupNames: settings.value.poolGroupNames
   })
+  if (refreshEpoch !== rankingModelUsageRefreshEpoch) return
+  rankingModelUsage.value = {}
+  rankingModelUsageState.value = {}
+  expandedRankingUserKeys.value = []
+  modelRankingRefreshEpoch += 1
+  modelRanking.value = []
+  modelRankingState.value = 'idle'
+  expandedModelRankingKeys.value = []
+  modelRankingUsers.value = {}
+  modelRankingUserState.value = {}
+  if (rankingView.value === 'models') void loadModelRanking()
+}
+
+function showUserRanking(mode: 'tokens' | 'cost') {
+  rankingView.value = 'users'
+  rankingMode.value = mode
+  void resizePlatformWindowToContent()
+}
+
+function toggleRanking() {
+  rankingExpanded.value = !rankingExpanded.value
+}
+
+async function showModelRanking() {
+  rankingView.value = 'models'
+  modelRankingSort.value = 'tokens'
+  if (modelRankingState.value === 'idle') await loadModelRanking()
+  void resizePlatformWindowToContent()
+}
+
+async function loadModelRanking() {
+  if (!hasAdmin.value || modelRankingState.value === 'loading') return
+  const refreshEpoch = ++modelRankingRefreshEpoch
+  modelRankingState.value = 'loading'
+  try {
+    const items = await fetchAdminModelUsageRanking({
+      baseUrl: settings.value.sub2apiBaseUrl,
+      apiKey: settings.value.adminApiKey
+    })
+    if (refreshEpoch !== modelRankingRefreshEpoch) return
+    modelRanking.value = items
+    modelRankingState.value = 'ready'
+  } catch {
+    if (refreshEpoch !== modelRankingRefreshEpoch) return
+    modelRankingState.value = 'error'
+  } finally {
+    void resizePlatformWindowToContent()
+  }
+}
+
+function modelRankingKey(model: string): string {
+  return model
+}
+
+function isModelRankingExpanded(model: string): boolean {
+  return expandedModelRankingKeys.value.includes(modelRankingKey(model))
+}
+
+async function toggleModelRanking(model: string) {
+  const key = modelRankingKey(model)
+  if (isModelRankingExpanded(model)) {
+    expandedModelRankingKeys.value = expandedModelRankingKeys.value.filter((value) => value !== key)
+    void resizePlatformWindowToContent()
+    return
+  }
+
+  expandedModelRankingKeys.value = [...expandedModelRankingKeys.value, key]
+  if (modelRankingUserState.value[key]) {
+    void resizePlatformWindowToContent()
+    return
+  }
+
+  const refreshEpoch = modelRankingRefreshEpoch
+  modelRankingUserState.value = { ...modelRankingUserState.value, [key]: 'loading' }
+  void resizePlatformWindowToContent()
+  try {
+    const users = await fetchAdminModelUserUsage({
+      baseUrl: settings.value.sub2apiBaseUrl,
+      apiKey: settings.value.adminApiKey
+    }, model, adminMetrics.value.userIdentities ?? [])
+    if (refreshEpoch === modelRankingRefreshEpoch) {
+      modelRankingUsers.value = { ...modelRankingUsers.value, [key]: users }
+      modelRankingUserState.value = { ...modelRankingUserState.value, [key]: 'ready' }
+    }
+  } catch {
+    if (refreshEpoch === modelRankingRefreshEpoch) {
+      modelRankingUserState.value = { ...modelRankingUserState.value, [key]: 'error' }
+    }
+  } finally {
+    void resizePlatformWindowToContent()
+  }
+}
+
+function rankingUserKey(item: UserTodayUsageRankItem): string {
+  return item.userId === null ? item.displayName : String(item.userId)
+}
+
+function isRankingUserExpanded(item: UserTodayUsageRankItem): boolean {
+  return expandedRankingUserKeys.value.includes(rankingUserKey(item))
+}
+
+async function toggleRankingUser(item: UserTodayUsageRankItem) {
+  const key = rankingUserKey(item)
+  if (isRankingUserExpanded(item)) {
+    expandedRankingUserKeys.value = expandedRankingUserKeys.value.filter((value) => value !== key)
+    void resizePlatformWindowToContent()
+    return
+  }
+
+  expandedRankingUserKeys.value = [...expandedRankingUserKeys.value, key]
+  if (item.userId === null || rankingModelUsageState.value[key]) {
+    void resizePlatformWindowToContent()
+    return
+  }
+
+  rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'loading' }
+  const refreshEpoch = rankingModelUsageRefreshEpoch
+  void resizePlatformWindowToContent()
+  try {
+    const models = await fetchAdminUserModelUsage({
+      baseUrl: settings.value.sub2apiBaseUrl,
+      apiKey: settings.value.adminApiKey
+    }, item.userId)
+    if (refreshEpoch === rankingModelUsageRefreshEpoch) {
+      rankingModelUsage.value = { ...rankingModelUsage.value, [key]: models }
+      rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'ready' }
+    }
+  } catch {
+    if (refreshEpoch === rankingModelUsageRefreshEpoch) {
+      rankingModelUsageState.value = { ...rankingModelUsageState.value, [key]: 'error' }
+    }
+  } finally {
+    void resizePlatformWindowToContent()
+  }
 }
 
 function toggleAccountDetails() {
@@ -670,6 +970,15 @@ function formatRequestCount(value: number | null): string {
   return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 }).format(value)
 }
 
+function formatDuration(value: number | null): string {
+  if (value === null || Number.isNaN(value)) return '--'
+  if (value >= 1_000) {
+    const seconds = (value / 1_000).toFixed(2).replace(/\.?0+$/, '')
+    return `${seconds}s`
+  }
+  return `${Math.round(value)}ms`
+}
+
 function formatCompactTokenCount(value: number | null): string {
   if (value === null || Number.isNaN(value)) return '--'
   if (value >= 1_000_000_000) return `${formatCompactNumber(value / 1_000_000_000)}B`
@@ -694,6 +1003,52 @@ function sortUserRanking(items: UserTodayUsageRankItem[], mode: 'tokens' | 'cost
     if (tokenDiff !== 0) return tokenDiff
     return (left.userId ?? 0) - (right.userId ?? 0)
   })
+}
+
+function sortedRankingModelUsage(item: UserTodayUsageRankItem): UserModelUsageItem[] {
+  return sortModelUsage(rankingModelUsage.value[rankingUserKey(item)] ?? [], rankingMode.value)
+}
+
+function sortModelUsage(items: UserModelUsageItem[], mode: 'tokens' | 'cost'): UserModelUsageItem[] {
+  return [...items].sort((left, right) => {
+    if (mode === 'cost') {
+      const costDiff = (right.actualCost ?? 0) - (left.actualCost ?? 0)
+      if (costDiff !== 0) return costDiff
+    }
+
+    const tokenDiff = right.tokens - left.tokens
+    if (tokenDiff !== 0) return tokenDiff
+    return left.model.localeCompare(right.model)
+  })
+}
+
+function sortModelRanking(items: ModelUsageRankItem[], mode: ModelRankingSort): ModelUsageRankItem[] {
+  return [...items].sort((left, right) => compareUsageRows(left, right, mode, left.model, right.model))
+}
+
+function sortedModelRankingUsers(model: string): ModelUserUsageItem[] {
+  return [...(modelRankingUsers.value[modelRankingKey(model)] ?? [])]
+    .sort((left, right) => compareUsageRows(left, right, modelRankingSort.value, left.displayName, right.displayName))
+}
+
+function compareUsageRows(
+  left: Pick<ModelUsageRankItem, 'requests' | 'tokens' | 'actualCost'>,
+  right: Pick<ModelUsageRankItem, 'requests' | 'tokens' | 'actualCost'>,
+  mode: ModelRankingSort,
+  leftName: string,
+  rightName: string
+): number {
+  if (mode === 'requests') {
+    const requestDiff = right.requests - left.requests
+    if (requestDiff !== 0) return requestDiff
+  }
+  if (mode === 'cost') {
+    const costDiff = (right.actualCost ?? 0) - (left.actualCost ?? 0)
+    if (costDiff !== 0) return costDiff
+  }
+  const tokenDiff = right.tokens - left.tokens
+  if (tokenDiff !== 0) return tokenDiff
+  return leftName.localeCompare(rightName)
 }
 
 function formatAccountWindowText(item: PoolAccountUsageWindow): string {
@@ -1204,7 +1559,7 @@ onMounted(() => {
   void resizePlatformWindowToContent()
 })
 
-watch([accountDetailsExpanded, selectedAccountStatus, adminMetrics], () => {
+watch([accountDetailsExpanded, rankingExpanded, selectedAccountStatus, adminMetrics], () => {
   void resizePlatformWindowToContent()
 })
 

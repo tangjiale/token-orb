@@ -18,7 +18,15 @@ import {
   parseGroups,
   parseLatestFirstTokenMs,
   parseTodayActualCost,
+  parseTotalTokens,
+  parseTotalActualCost,
+  parseTotalAccountCost,
+  parseTotalStandardCost,
+  parseAverageDurationMs,
+  parseActiveUsers,
   parseTodayTokens,
+  parseModelUserUsage,
+  parseUserModelUsage,
   parseUserRanking,
   parseUsers
 } from './tokenMetrics'
@@ -43,6 +51,16 @@ describe('tokenMetrics', () => {
     expect(parseTodayActualCost({ today_actual_cost: 32.481 })).toBe(32.481)
     expect(parseTodayActualCost({ data: { today_actual_cost: '0.0098' } })).toBe(0.0098)
     expect(parseTodayActualCost({ today_cost: 12.5 })).toBeNull()
+  })
+
+  it('parses supplemental dashboard costs and activity metrics', () => {
+    const payload = { total_tokens: 1_000_000, total_actual_cost: 1.2, total_account_cost: 1.25, total_cost: 1.5, average_duration_ms: 16540, active_users: 7 }
+    expect(parseTotalTokens(payload)).toBe(1_000_000)
+    expect(parseTotalActualCost(payload)).toBe(1.2)
+    expect(parseTotalAccountCost(payload)).toBe(1.25)
+    expect(parseTotalStandardCost(payload)).toBe(1.5)
+    expect(parseAverageDurationMs(payload)).toBe(16540)
+    expect(parseActiveUsers(payload)).toBe(7)
   })
 
   it('parses latest first token from usage list', () => {
@@ -383,6 +401,24 @@ describe('tokenMetrics', () => {
     const users = parseUsers({ data: [{ id: 2, email: 'a@test.com', username: '阿唐' }] })
     expect(parseUserRanking({ ranking: [{ user_id: 2, email: 'a@test.com', tokens: 1200 }] }, users)).toEqual([
       { rank: 1, userId: 2, name: '阿唐', email: 'a@test.com', displayName: '阿唐（a@test.com）', tokens: 1200, actualCost: null }
+    ])
+  })
+
+  it('parses model usage rows for an expanded ranking user', () => {
+    expect(parseUserModelUsage({ data: { models: [
+      { model: 'gpt-5.4', requests: 12, total_tokens: 1200, actual_cost: 0.1284 },
+      { model: 'claude-sonnet-4-5', requests: 8, tokens: 800, cost: 0.06 },
+      { model: '  ', total_tokens: 99 }
+    ] } })).toEqual([
+      { model: 'gpt-5.4', requests: 12, tokens: 1200, actualCost: 0.1284 },
+      { model: 'claude-sonnet-4-5', requests: 8, tokens: 800, actualCost: 0.06 }
+    ])
+  })
+
+  it('uses admin usernames for model user breakdown rows', () => {
+    const users = parseUsers({ data: [{ id: 2, email: 'a@test.com', username: '阿唐' }] })
+    expect(parseModelUserUsage({ users: [{ user_id: 2, email: 'legacy@test.com', requests: 3, total_tokens: 1200, actual_cost: 0.12 }] }, users)).toEqual([
+      { userId: 2, displayName: '阿唐（a@test.com）', requests: 3, tokens: 1200, actualCost: 0.12 }
     ])
   })
 

@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from './App.vue'
 import { settingsStorageKey, type AppSettings } from '@/domain/settings'
-import { fetchAdminMonitorMetrics, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
+import { fetchAdminModelUsageRanking, fetchAdminModelUserUsage, fetchAdminMonitorMetrics, fetchAdminUserModelUsage, fetchSub2apiMetrics } from '@/domain/sub2apiClient'
 
 const { checkForAvailableUpdate, emitTauriEvent, getSettingsUpdatedListener, getAppVersion, hidePersonalFloatingOrb, listenTauriEvent, openReleaseNotes, resetSettingsUpdatedListener, tauriWindow } = vi.hoisted(() => {
   let settingsUpdatedListener: (() => void) | undefined
@@ -88,7 +88,10 @@ vi.mock('@/domain/sub2apiClient', () => ({
     todayTokens: null,
     firstTokenMs: null,
     updatedAt: new Date().toISOString()
-  }))
+  })),
+  fetchAdminUserModelUsage: vi.fn(async () => []),
+  fetchAdminModelUsageRanking: vi.fn(async () => []),
+  fetchAdminModelUserUsage: vi.fn(async () => [])
 }))
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -431,6 +434,12 @@ describe('App settings sync', () => {
     vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
       todayTotalTokens: 52220000,
       todayTotalCost: 32.481,
+      totalTokens: 10080000000,
+      totalActualCost: 8150,
+      totalAccountCost: 8150,
+      totalStandardCost: 8150,
+      averageDurationMs: 16540,
+      activeUsers: 7,
       poolRemainingPercent: 91,
       poolLatestResetAt: '2026-03-16T12:37:00.000Z',
       poolResetItems: [],
@@ -479,7 +488,15 @@ describe('App settings sync', () => {
     expect(wrapper.text()).toContain('容量：0 / 50')
     expect(wrapper.text()).toContain('由磊（707200583@163.com）')
     expect(wrapper.get('button.account-details-toggle').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.get('button.ranking-toggle').attributes('aria-expanded')).toBe('true')
     expect(wrapper.get('.monitor-card .token-cost').text()).toBe('$32.48')
+    expect(wrapper.get('.monitor-grid--secondary').text()).toContain('总 Token')
+    expect(wrapper.get('.monitor-grid--secondary').text()).toContain('10.08B')
+    expect(wrapper.get('.monitor-grid--secondary .token-cost').text()).toContain('$8.15K')
+    expect(wrapper.find('.monitor-grid--secondary .token-account-cost').exists()).toBe(false)
+    expect(wrapper.find('.monitor-grid--secondary .token-standard-cost').exists()).toBe(false)
+    expect(wrapper.get('.monitor-grid--secondary').text()).toContain('平均响应16.54s')
+    expect(wrapper.get('.monitor-grid--secondary').text()).toContain('7 活跃用户')
     expect(wrapper.get('.ranking-value .token-cost').text()).toBe('$13.08')
     expect(wrapper.get('.schedule-pill').text()).toBe('调度中')
     expect(wrapper.get('.account-status-pill.normal').text()).toBe('正常')
@@ -501,6 +518,19 @@ describe('App settings sync', () => {
 
     expect(wrapper.get('.schedule-pill').text()).toBe('调度中')
     expect(wrapper.text()).toContain('5h使用量 9% · 3h 37m')
+  })
+
+  it('collapses the ranking while keeping its tabs available', async () => {
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button.ranking-toggle').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('button.ranking-toggle').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.text()).toContain('今日用量榜')
+    expect(wrapper.find('.ranking-content').exists()).toBe(false)
   })
 
   it('colors account usage bars by the used percentage thresholds', async () => {
@@ -743,5 +773,97 @@ describe('App settings sync', () => {
     expect(firstRow()).toContain('高消费')
     expect(firstRow()).toContain('3.00M')
     expect(firstRow()).toContain('$9.90')
+  })
+
+  it('expands a ranking user and sorts model usage by the active ranking mode', async () => {
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValueOnce({
+      todayTotalTokens: 15000000,
+      todayTotalCost: 3.5,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: null,
+      poolCapacity: null,
+      poolAccountDetails: [],
+      userRanking: [{
+        rank: 1,
+        userId: 1,
+        name: '模型用户',
+        email: 'models@example.com',
+        displayName: '模型用户（models@example.com）',
+        tokens: 15000000,
+        actualCost: 3.5
+      }],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    })
+    vi.mocked(fetchAdminUserModelUsage).mockResolvedValueOnce([
+      { model: '高费用模型', requests: 300, tokens: 3000000, actualCost: 2.9 },
+      { model: '高用量模型', requests: 120, tokens: 12000000, actualCost: 0.6 }
+    ])
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button.ranking-row').trigger('click')
+    await flushPromises()
+
+    const modelRows = () => wrapper.findAll('.ranking-model-row')
+    expect(fetchAdminUserModelUsage).toHaveBeenCalledWith({
+      baseUrl: baseSettings.sub2apiBaseUrl,
+      apiKey: baseSettings.adminApiKey
+    }, 1)
+    expect(wrapper.get('button.ranking-row').attributes('aria-expanded')).toBe('true')
+    expect(modelRows()[0].text()).toContain('高用量模型')
+    expect(modelRows()[1].text()).toContain('高费用模型')
+
+    await wrapper.findAll('.ranking-tab')[1].trigger('click')
+    await flushPromises()
+
+    expect(modelRows()[0].text()).toContain('高费用模型')
+    expect(modelRows()[1].text()).toContain('高用量模型')
+  })
+
+  it('shows the model ranking and reorders expanded users with the selected column', async () => {
+    vi.mocked(fetchAdminModelUsageRanking).mockResolvedValueOnce([
+      { model: '高费用模型', requests: 300, tokens: 3000000, actualCost: 2.9 },
+      { model: '高用量模型', requests: 120, tokens: 12000000, actualCost: 0.6 }
+    ])
+    vi.mocked(fetchAdminModelUserUsage).mockResolvedValueOnce([
+      { userId: 1, displayName: '高费用用户', requests: 300, tokens: 3000000, actualCost: 2.9 },
+      { userId: 2, displayName: '高用量用户', requests: 120, tokens: 12000000, actualCost: 0.6 }
+    ])
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.findAll('.ranking-tab')[2].trigger('click')
+    await flushPromises()
+
+    const modelRows = () => wrapper.findAll('.model-ranking-row')
+    expect(wrapper.get('.ranking-tab.active').text()).toBe('模型用量榜')
+    expect(wrapper.get('.model-ranking-head button[title="按 Token 从高到低排序"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('.model-ranking-head button[title="按消费从高到低排序"]').text()).toContain('消费')
+    expect(modelRows()[0].text()).toContain('高用量模型')
+    expect(modelRows()[1].text()).toContain('高费用模型')
+
+    await modelRows()[0].trigger('click')
+    await flushPromises()
+
+    const userRows = () => wrapper.findAll('.model-ranking-user-row')
+    expect(userRows()[0].text()).toContain('高用量用户')
+    expect(userRows()[1].text()).toContain('高费用用户')
+
+    await wrapper.get('.model-ranking-head button[title="按请求数从高到低排序"]').trigger('click')
+    await flushPromises()
+
+    expect(modelRows()[0].text()).toContain('高费用模型')
+    expect(wrapper.get('.model-ranking-head button[title="按请求数从高到低排序"]').attributes('aria-pressed')).toBe('true')
+
+    await wrapper.get('.model-ranking-head button:last-of-type').trigger('click')
+    await flushPromises()
+
+    expect(modelRows()[0].text()).toContain('高费用模型')
+    expect(userRows()[0].text()).toContain('高费用用户')
+    expect(wrapper.get('.model-ranking-head button[title="按消费从高到低排序"]').attributes('aria-pressed')).toBe('true')
   })
 })

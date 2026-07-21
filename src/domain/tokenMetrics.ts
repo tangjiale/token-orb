@@ -7,6 +7,12 @@ export interface TokenOrbMetrics {
 export interface AdminMonitorMetrics {
   todayTotalTokens: number | null
   todayTotalCost: number | null
+  totalTokens?: number | null
+  totalActualCost?: number | null
+  totalAccountCost?: number | null
+  totalStandardCost?: number | null
+  averageDurationMs?: number | null
+  activeUsers?: number | null
   poolRemainingPercent: number | null
   poolLatestResetAt: string | null
   poolResetItems: PoolResetItem[]
@@ -17,6 +23,7 @@ export interface AdminMonitorMetrics {
   poolCapacity: PoolCapacitySummary | null
   poolAccountDetails: PoolAccountDetailItem[]
   userRanking: UserTodayUsageRankItem[]
+  userIdentities?: UserIdentityItem[]
   updatedAt: string | null
 }
 
@@ -84,6 +91,28 @@ export interface UserTodayUsageRankItem {
   actualCost: number | null
 }
 
+export interface UserModelUsageItem {
+  model: string
+  requests: number
+  tokens: number
+  actualCost: number | null
+}
+
+export interface ModelUsageRankItem {
+  model: string
+  requests: number
+  tokens: number
+  actualCost: number | null
+}
+
+export interface ModelUserUsageItem {
+  userId: number | null
+  displayName: string
+  requests: number
+  tokens: number
+  actualCost: number | null
+}
+
 export interface UserIdentityItem {
   id: number
   email: string
@@ -128,6 +157,36 @@ export function parseTodayActualCost(payload: unknown): number | null {
   return readNumber(record, 'today_actual_cost')
 }
 
+export function parseTotalTokens(payload: unknown): number | null {
+  const record = unwrapData(payload)
+  return readNumber(record, 'total_tokens')
+}
+
+export function parseTotalActualCost(payload: unknown): number | null {
+  const record = unwrapData(payload)
+  return readNumber(record, 'total_actual_cost')
+}
+
+export function parseTotalAccountCost(payload: unknown): number | null {
+  const record = unwrapData(payload)
+  return readNumber(record, 'total_account_cost')
+}
+
+export function parseTotalStandardCost(payload: unknown): number | null {
+  const record = unwrapData(payload)
+  return readNumber(record, 'total_cost')
+}
+
+export function parseAverageDurationMs(payload: unknown): number | null {
+  const record = unwrapData(payload)
+  return readNumber(record, 'average_duration_ms')
+}
+
+export function parseActiveUsers(payload: unknown): number | null {
+  const record = unwrapData(payload)
+  return readNumber(record, 'active_users')
+}
+
 export function parseLatestFirstTokenMs(payload: unknown): number | null {
   const record = unwrapData(payload)
   const items = Array.isArray(record?.items) ? record.items : []
@@ -160,6 +219,50 @@ export function parseUserRanking(payload: unknown, users: UserIdentityItem[] = [
     .sort((a, b) => b.tokens - a.tokens)
     .slice(0, 10)
     .map((item, index) => ({ ...item, rank: index + 1 }))
+}
+
+export function parseUserModelUsage(payload: unknown): UserModelUsageItem[] {
+  const record = unwrapData(payload)
+  const models = Array.isArray(record?.models) ? record.models : []
+  return models
+    .map((item) => {
+      const row = isRecord(item) ? item : {}
+      const model = typeof row.model === 'string' ? row.model.trim() : ''
+      if (!model) return null
+      return {
+        model,
+        requests: readNumber(row, 'requests') ?? 0,
+        tokens: readFirstNumber(row, ['total_tokens', 'tokens']) ?? 0,
+        actualCost: readFirstNumber(row, ['actual_cost', 'user_cost', 'cost'])
+      }
+    })
+    .filter((item): item is UserModelUsageItem => item !== null)
+}
+
+export function parseModelUsageRanking(payload: unknown): ModelUsageRankItem[] {
+  return parseUserModelUsage(payload)
+}
+
+export function parseModelUserUsage(payload: unknown, userIdentities: UserIdentityItem[] = []): ModelUserUsageItem[] {
+  const record = unwrapData(payload)
+  const users = Array.isArray(record?.users) ? record.users : []
+  const userMap = new Map(userIdentities.map((user) => [user.id, user]))
+  return users
+    .map((item) => {
+      const row = isRecord(item) ? item : {}
+      const userId = readNumber(row, 'user_id')
+      const user = userId === null ? undefined : userMap.get(userId)
+      const email = user?.email || (typeof row.email === 'string' ? row.email.trim() : '')
+      const username = user?.username || (typeof row.username === 'string' ? row.username.trim() : '')
+      return {
+        userId,
+        displayName: username ? (email ? `${username}（${email}）` : username) : (email || (userId === null ? '未知用户' : `用户 #${userId}`)),
+        requests: readNumber(row, 'requests') ?? 0,
+        tokens: readFirstNumber(row, ['total_tokens', 'tokens']) ?? 0,
+        actualCost: readFirstNumber(row, ['actual_cost', 'user_cost', 'cost'])
+      }
+    })
+    .filter((item) => item.displayName !== '')
 }
 
 export function parseUsers(payload: unknown): UserIdentityItem[] {

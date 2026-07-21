@@ -10,14 +10,27 @@ import {
   listPoolResetItems,
   normalizeBaseUrl,
   parseGroups,
+  parseActiveUsers,
+  parseAverageDurationMs,
   parseLatestFirstTokenMs,
   parseTodayActualCost,
+  parseTotalAccountCost,
+  parseTotalActualCost,
+  parseTotalStandardCost,
+  parseTotalTokens,
   parseTodayTokens,
+  parseModelUsageRanking,
+  parseModelUserUsage,
+  parseUserModelUsage,
   parseUserRanking,
   parseUsers,
   readItems,
   type AdminMonitorMetrics,
+  type ModelUsageRankItem,
+  type ModelUserUsageItem,
   type PoolAccountTodayStats,
+  type UserIdentityItem,
+  type UserModelUsageItem,
   type TokenOrbMetrics
 } from './tokenMetrics'
 
@@ -91,10 +104,17 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
   const todayStatsByAccountId = groupMatched
     ? await fetchAccountTodayStats(baseUrl, headers, accountItems, refreshAt)
     : {}
+  const userIdentities = parseUsers(usersPayload)
 
   return {
     todayTotalTokens: parseTodayTokens(statsPayload),
     todayTotalCost: parseTodayActualCost(statsPayload),
+    totalTokens: parseTotalTokens(statsPayload),
+    totalActualCost: parseTotalActualCost(statsPayload),
+    totalAccountCost: parseTotalAccountCost(statsPayload),
+    totalStandardCost: parseTotalStandardCost(statsPayload),
+    averageDurationMs: parseAverageDurationMs(statsPayload),
+    activeUsers: parseActiveUsers(statsPayload),
     poolRemainingPercent: groupMatched ? calculatePoolRemainingPercent(accountItems, selectedGroupIds, now, '5h') : null,
     poolLatestResetAt: groupMatched ? findLatestPoolResetAt(accountItems, selectedGroupIds, now, '5h') : null,
     poolResetItems: groupMatched ? listPoolResetItems(accountItems, selectedGroupIds, now, '5h') : [],
@@ -104,9 +124,49 @@ export async function fetchAdminMonitorMetrics(config: AdminMonitorConfig): Prom
     poolAccounts: groupMatched ? countPoolAccounts(accountItems, selectedGroupIds) : null,
     poolCapacity: groupMatched ? findPoolCapacitySummary(capacityPayload, selectedGroupIds) : null,
     poolAccountDetails: groupMatched ? listPoolAccountDetails(accountItems, selectedGroupIds, now, todayStatsByAccountId) : [],
-    userRanking: parseUserRanking(rankingPayload, parseUsers(usersPayload)),
+    userRanking: parseUserRanking(rankingPayload, userIdentities),
+    userIdentities,
     updatedAt: new Date().toISOString()
   }
+}
+
+export async function fetchAdminUserModelUsage(
+  config: Pick<AdminMonitorConfig, 'baseUrl' | 'apiKey'>,
+  userId: number
+): Promise<UserModelUsageItem[]> {
+  const baseUrl = normalizeBaseUrl(config.baseUrl)
+  const headers = buildRealtimeHeaders(buildAdminApiKeyHeaders(config.apiKey))
+  const today = formatLocalDate(new Date())
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
+  const query = `start_date=${today}&end_date=${today}&timezone=${encodeURIComponent(timezone)}&user_id=${encodeURIComponent(String(userId))}`
+  const payload = await requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/models?${query}`), headers)
+  return parseUserModelUsage(payload)
+}
+
+export async function fetchAdminModelUsageRanking(
+  config: Pick<AdminMonitorConfig, 'baseUrl' | 'apiKey'>
+): Promise<ModelUsageRankItem[]> {
+  const baseUrl = normalizeBaseUrl(config.baseUrl)
+  const headers = buildRealtimeHeaders(buildAdminApiKeyHeaders(config.apiKey))
+  const today = formatLocalDate(new Date())
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
+  const query = `start_date=${today}&end_date=${today}&timezone=${encodeURIComponent(timezone)}&model_source=requested`
+  const payload = await requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/models?${query}`), headers)
+  return parseModelUsageRanking(payload)
+}
+
+export async function fetchAdminModelUserUsage(
+  config: Pick<AdminMonitorConfig, 'baseUrl' | 'apiKey'>,
+  model: string,
+  userIdentities: UserIdentityItem[] = []
+): Promise<ModelUserUsageItem[]> {
+  const baseUrl = normalizeBaseUrl(config.baseUrl)
+  const headers = buildRealtimeHeaders(buildAdminApiKeyHeaders(config.apiKey))
+  const today = formatLocalDate(new Date())
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai'
+  const query = `start_date=${today}&end_date=${today}&timezone=${encodeURIComponent(timezone)}&model_source=requested&model=${encodeURIComponent(model)}&limit=200`
+  const payload = await requestJson(buildRealtimeUrl(`${baseUrl}/api/v1/admin/dashboard/user-breakdown?${query}`), headers)
+  return parseModelUserUsage(payload, userIdentities)
 }
 
 function normalizePoolGroupNames(value: string | string[] | undefined): string[] {
