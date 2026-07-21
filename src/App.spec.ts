@@ -344,6 +344,20 @@ describe('App settings sync', () => {
     expect(openReleaseNotes).toHaveBeenCalledWith('https://github.com/tangjiale/token-orb/releases/tag/v0.4.2')
   })
 
+  it('resizes the updater window to show the complete update notes', async () => {
+    window.history.replaceState({}, '', '/?view=updater')
+    Object.defineProperty(window, '__TAURI_INTERNALS__', { configurable: true, value: {} })
+    const wrapper = mount(App)
+    await flushPromises()
+    Object.defineProperty(wrapper.get('.update-panel').element, 'scrollHeight', { configurable: true, value: 486 })
+    tauriWindow.setSize.mockClear()
+
+    await wrapper.get('.update-refresh-button').trigger('click')
+    await flushPromises()
+
+    expect(tauriWindow.setSize).toHaveBeenLastCalledWith(expect.objectContaining({ width: 420, height: 502 }))
+  })
+
   it('tests personal JWT independently from admin API settings', async () => {
     window.history.replaceState({}, '', '/?view=settings')
     localStorage.setItem(settingsStorageKey, JSON.stringify({
@@ -821,6 +835,48 @@ describe('App settings sync', () => {
 
     expect(modelRows()[0].text()).toContain('高费用模型')
     expect(modelRows()[1].text()).toContain('高用量模型')
+  })
+
+  it('keeps an expanded ranking user open while refreshing metrics', async () => {
+    const metrics = {
+      todayTotalTokens: 15000000,
+      todayTotalCost: 3.5,
+      poolRemainingPercent: null,
+      poolLatestResetAt: null,
+      poolResetItems: [],
+      poolAccounts: null,
+      poolCapacity: null,
+      poolAccountDetails: [],
+      userRanking: [{
+        rank: 1,
+        userId: 1,
+        name: '模型用户',
+        email: 'models@example.com',
+        displayName: '模型用户（models@example.com）',
+        tokens: 15000000,
+        actualCost: 3.5
+      }],
+      updatedAt: '2026-03-16T09:00:00.000Z'
+    } as Awaited<ReturnType<typeof fetchAdminMonitorMetrics>>
+    vi.mocked(fetchAdminMonitorMetrics).mockResolvedValue(metrics)
+    vi.mocked(fetchAdminUserModelUsage).mockResolvedValue([
+      { model: '模型A', requests: 12, tokens: 1200000, actualCost: 0.6 }
+    ])
+    localStorage.setItem(settingsStorageKey, JSON.stringify(baseSettings))
+    const wrapper = mount(App)
+    await flushPromises()
+
+    await wrapper.get('button.ranking-row').trigger('click')
+    await flushPromises()
+    expect(wrapper.get('button.ranking-row').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.ranking-model-list').exists()).toBe(true)
+
+    await vi.advanceTimersByTimeAsync(baseSettings.refreshSeconds * 1000)
+    await flushPromises()
+
+    expect(wrapper.get('button.ranking-row').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.ranking-model-list').exists()).toBe(true)
+    expect(wrapper.text()).toContain('模型A')
   })
 
   it('shows the model ranking and reorders expanded users with the selected column', async () => {

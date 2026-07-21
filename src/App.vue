@@ -77,7 +77,7 @@
   </main>
 
   <main v-else-if="isUpdaterView" class="settings-shell update-shell">
-    <section class="settings-panel standalone update-panel">
+    <section ref="updatePanelRef" class="settings-panel standalone update-panel">
       <div class="section-title">
         <span>当前版本</span>
         <button class="update-refresh-button" type="button" :disabled="updateBusy" title="重新检查更新" @click="checkForAppUpdate">
@@ -643,6 +643,7 @@ const expandedRankingUserKeys = ref<string[]>([])
 const rankingModelUsage = ref<Record<string, UserModelUsageItem[]>>({})
 const rankingModelUsageState = ref<Record<string, 'loading' | 'ready' | 'error'>>({})
 const platformUpdateAvailable = ref(false)
+const updatePanelRef = ref<HTMLElement | null>(null)
 const appVersion = ref('0.1.0')
 const updateVersion = ref('')
 const updateBody = ref('')
@@ -801,15 +802,7 @@ async function refreshAdmin() {
     poolGroupNames: settings.value.poolGroupNames
   })
   if (refreshEpoch !== rankingModelUsageRefreshEpoch) return
-  rankingModelUsage.value = {}
-  rankingModelUsageState.value = {}
-  expandedRankingUserKeys.value = []
-  modelRankingRefreshEpoch += 1
-  modelRanking.value = []
-  modelRankingState.value = 'idle'
-  expandedModelRankingKeys.value = []
-  modelRankingUsers.value = {}
-  modelRankingUserState.value = {}
+  // 刷新指标时保留已展开的明细，避免手动或定时刷新打断当前查看。
   if (rankingView.value === 'models') void loadModelRanking()
 }
 
@@ -1154,6 +1147,20 @@ async function resizePlatformWindowToContent() {
     const api = await loadTauriWindowApi()
     if (!api) return
     await api.getCurrentWindow().setSize(new api.LogicalSize(410, height))
+  } catch {
+    return
+  }
+}
+
+async function resizeUpdaterWindowToContent() {
+  if (!isUpdaterView) return
+  await nextTick()
+  const panelHeight = updatePanelRef.value?.scrollHeight
+  if (!panelHeight) return
+  try {
+    const api = await loadTauriWindowApi()
+    if (!api) return
+    await api.getCurrentWindow().setSize(new api.LogicalSize(420, panelHeight + 16))
   } catch {
     return
   }
@@ -1561,6 +1568,10 @@ onMounted(() => {
 
 watch([accountDetailsExpanded, rankingExpanded, selectedAccountStatus, adminMetrics], () => {
   void resizePlatformWindowToContent()
+})
+
+watch([updateState, updateBody, downloadPercent], () => {
+  void resizeUpdaterWindowToContent()
 })
 
 onBeforeUnmount(() => {
